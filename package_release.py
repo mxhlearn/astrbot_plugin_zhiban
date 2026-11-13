@@ -1,4 +1,4 @@
-"""打包纯源码和校验清单，不包含服务器配置、令牌和用户数据。"""
+"""打包插件源码、必要静态资源和校验清单，不含配置、令牌或用户数据。"""
 from pathlib import Path
 import ast
 import hashlib
@@ -10,6 +10,9 @@ PLUGIN = ROOT / "astrbot_plugin_zhiban"
 
 
 def build():
+    from build_views import build_views
+
+    build_views()
     out = ROOT / "dist"
     out.mkdir(exist_ok=True)
     manifest = []
@@ -19,6 +22,10 @@ def build():
                 continue
             parts = p.relative_to(PLUGIN).parts
             if set(parts) & {"__pycache__", ".pytest_cache", ".git", "node_modules", "tests"}:
+                continue
+            if parts[:2] == ("modules", "astrbot_plugin_angel_memory"):
+                continue
+            if p.name == ".zhiban_generated_assets.json":
                 continue
             if p.suffix in {".pyc", ".db", ".sqlite3", ".log"} or p.name.startswith(".env"):
                 continue

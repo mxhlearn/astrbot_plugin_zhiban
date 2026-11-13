@@ -2,7 +2,7 @@
 
 MODULES = (
     {"key": "heart", "label": "聊天互动", "package": "astrbot_plugin_angel_heart"},
-    {"key": "memory", "label": "记忆与成长", "package": "astrbot_plugin_angel_memory"},
+    {"key": "memory", "label": "记忆成长", "package": "astrbot_plugin_livingmemory"},
     {"key": "meme", "label": "表情互动", "package": "astrbot_plugin_meme_manager"},
     {"key": "tts", "label": "语音回复", "package": "astrbot_plugin_breeze_tts"},
     {"key": "proactive", "label": "主动问候", "package": "astrbot_plugin_proactive_chat"},

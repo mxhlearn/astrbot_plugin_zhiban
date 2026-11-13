@@ -1,4 +1,4 @@
-"""从固定服务器模块生成按常用程度排列的中文统一配置。"""
+"""从整合模块生成按常用程度排列的中文统一配置。"""
 from pathlib import Path
 import json
 import importlib.util

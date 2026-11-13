@@ -440,7 +440,7 @@ class ListenMusicPlugin(Star):
     async def initialize(self) -> None:
         if self._initialized:
             return
-        data_dir = getattr(context, "zhiban_data_dir", None) or (StarTools.get_data_dir("astrbot_plugin_zhiban") / "music")
+        data_dir = getattr(self.context, "zhiban_data_dir", None) or (StarTools.get_data_dir("astrbot_plugin_zhiban") / "music")
         data_dir.mkdir(parents=True, exist_ok=True)
         connector = aiohttp.TCPConnector(limit=16, limit_per_host=8, ttl_dns_cache=300)
         http = aiohttp.ClientSession(

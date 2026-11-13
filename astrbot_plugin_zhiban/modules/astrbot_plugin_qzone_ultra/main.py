@@ -675,8 +675,58 @@ def _evict_local_qzone_bridge_modules(package_root: Path) -> None:
         sys.modules.pop(name, None)
 
 
+def _evict_disabled_standalone_qzone_bridge_modules(package_root: Path) -> None:
+    """Replace the disabled standalone plugin's global bridge import safely."""
+    names = [
+        name
+        for name in sys.modules
+        if name == "qzone_bridge" or name.startswith("qzone_bridge.")
+    ]
+    foreign_names = []
+    for name in names:
+        module_file = getattr(sys.modules.get(name), "__file__", None)
+        if not module_file:
+            raise RuntimeError(f"{name} is already loaded without a file path")
+        module_path = Path(module_file).resolve(strict=False)
+        if _path_contains(package_root, module_path):
+            continue
+        bridge_root = next(
+            (parent for parent in module_path.parents if parent.name == "qzone_bridge"),
+            None,
+        )
+        if bridge_root is None or bridge_root.parent.name not in {
+            "astrbot_plugin_qzone",
+            "astrbot_plugin_qzone_ultra",
+        }:
+            raise RuntimeError(f"{name} is already loaded from an unrelated package")
+        foreign_names.append(name)
+
+    if not foreign_names:
+        return
+
+    try:
+        from astrbot.core.star.star import star_registry
+    except Exception:
+        star_registry = ()
+    active_standalone = any(
+        getattr(metadata, "activated", False)
+        and getattr(metadata, "star_cls", None) is not None
+        and (
+            getattr(metadata, "name", None) in {"astrbot_plugin_qzone", "astrbot_plugin_qzone_ultra"}
+            or getattr(metadata, "root_dir_name", None) in {"astrbot_plugin_qzone", "astrbot_plugin_qzone_ultra"}
+        )
+        for metadata in star_registry
+    )
+    if active_standalone:
+        raise RuntimeError("standalone QQ 空间插件仍在运行")
+
+    for name in sorted(foreign_names, key=lambda item: item.count("."), reverse=True):
+        sys.modules.pop(name, None)
+
+
 def _load_local_qzone_bridge_package() -> None:
     package_root = _local_qzone_bridge_root()
+    _evict_disabled_standalone_qzone_bridge_modules(package_root)
     for name in tuple(sys.modules):
         if name == "qzone_bridge" or name.startswith("qzone_bridge."):
             _verify_local_qzone_bridge_module(name, package_root)
@@ -7113,3 +7163,7 @@ class QzoneStablePlugin(Star):
             await self.controller.close()
         except Exception as exc:
             logger.exception("qzone controller close failed: %s", exc)
+        try:
+            _evict_local_qzone_bridge_modules(_local_qzone_bridge_root())
+        except Exception as exc:
+            logger.warning("qzone bridge namespace cleanup failed: %s", exc)

@@ -80,6 +80,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.register_tool = True
         self.patch_framework = patch.object(runtime, "_framework",
                                             return_value=(self.stars, self.registry, self.handlers, self.tools))
+        self.real_import_module = runtime.importlib.import_module
         self.patch_import = patch.object(runtime.importlib, "import_module", side_effect=self.import_module)
         self.patch_framework.start()
         self.patch_import.start()
@@ -92,7 +93,11 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
                 sys.modules.pop(key)
         self.temp.cleanup()
 
-    def import_module(self, name):
+    def import_module(self, name, package=None):
+        if not name.startswith("testzhiban.modules."):
+            if package is None:
+                return self.real_import_module(name)
+            return self.real_import_module(name, package)
         self.imports += 1
         outer = self
         module = types.ModuleType(name)
@@ -173,6 +178,32 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.imports, 0)
         await host.close()
 
+    async def test_legacy_qzone_name_blocks_bundled_qzone_ultra(self):
+        self.specs = [{"key": "qzone", "label": "QQ空间",
+                       "package": "astrbot_plugin_qzone_ultra"}]
+        self.config["qzone"] = {"enabled": True, "settings": {}}
+        self.registry.append(types.SimpleNamespace(
+            name="astrbot_plugin_qzone", root_dir_name="astrbot_plugin_qzone",
+            activated=True, star_cls=object(),
+            module_path="data.plugins.astrbot_plugin_qzone.main"))
+        host = self.host()
+        status = await host.start()
+        self.assertEqual(status[0]["state"], "blocked")
+        self.assertEqual(status[0]["error"], "原插件仍在运行：astrbot_plugin_qzone")
+        self.assertEqual(self.imports, 0)
+        await host.close()
+
+    def test_qzone_runtime_errors_are_reported_without_paths(self):
+        state = types.SimpleNamespace(key="qzone")
+        self.assertEqual(
+            runtime._safe_startup_error(state, RuntimeError("standalone QQ 空间插件仍在运行")),
+            "RuntimeError: 独立 QQ 空间插件仍在运行")
+        self.assertEqual(
+            runtime._safe_startup_error(state, RuntimeError(
+                "qzone_bridge resolved outside plugin directory: C:/plugins/astrbot_plugin_qzone/qzone_bridge/__init__.py")),
+            "RuntimeError: qzone_bridge 从 astrbot_plugin_qzone 加载")
+        self.assertEqual(runtime._safe_startup_error(state, RuntimeError("private detail")), "RuntimeError")
+
     async def test_initialize_failure_rolls_back_partial_resources(self):
         self.fail_initialize = True
         host = self.host()
@@ -229,6 +260,38 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.imports, 2)
         self.assertEqual(len(self.handlers), 1)
         await second.close()
+
+    async def test_reload_module_applies_saved_settings_and_rebinds_handlers(self):
+        host = self.host()
+        await host.start()
+        self.config["chat"]["settings"]["example"] = 19
+
+        status = await host.reload_module("chat")
+
+        self.assertEqual(status[0]["state"], "running")
+        self.assertEqual(self.imports, 2)
+        self.assertEqual(self.terminated, 1)
+        self.assertEqual(len(self.handlers), 1)
+        result = []
+        await self.handlers[0].handler(result)
+        self.assertEqual(result, [19])
+        await host.close()
+
+    async def test_reload_module_disables_and_reenables_cleanly(self):
+        host = self.host()
+        await host.start()
+        self.config["chat"]["enabled"] = False
+        status = await host.reload_module("chat")
+        self.assertEqual(status[0]["state"], "disabled")
+        self.assertEqual(self.handlers, [])
+        self.assertEqual(self.terminated, 1)
+
+        self.config["chat"]["enabled"] = True
+        status = await host.reload_module("chat")
+        self.assertEqual(status[0]["state"], "running")
+        self.assertEqual(self.imports, 2)
+        self.assertEqual(len(self.handlers), 1)
+        await host.close()
 
     def test_config_save_preserves_parent_and_deepcopy_has_no_parent_cycle(self):
         self.config["other"] = {"enabled": False}

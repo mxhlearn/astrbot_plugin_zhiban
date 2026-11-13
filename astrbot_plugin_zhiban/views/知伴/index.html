@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>知伴</title>
+    <style>
+      :root {
+        --zb-accent: #287b67;
+        --zb-bg: #f5f7f8;
+        --zb-border: #dfe4e8;
+        --zb-muted: #68727c;
+        --zb-surface: #fff;
+        --zb-text: #22292f;
+        --zb-danger: #ad4242;
+        --zb-ok: #287b67;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --zb-bg: #161a1d;
+          --zb-border: #364046;
+          --zb-muted: #a9b1b6;
+          --zb-surface: #20262a;
+          --zb-text: #eff2f3;
+          --zb-danger: #e07d7d;
+          --zb-ok: #69b89f;
+        }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--zb-bg); color: var(--zb-text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+      button { color: inherit; font: inherit; }
+      .app { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100vh; }
+      .nav { display: flex; flex-direction: column; min-height: 100vh; padding: 18px 12px 14px; border-right: 1px solid var(--zb-border); background: var(--zb-surface); }
+      .brand { padding: 2px 10px 16px; border-bottom: 1px solid var(--zb-border); }
+      .brand p { margin: 0; color: var(--zb-accent); font-size: 11px; font-weight: 700; }
+      .brand h1 { margin: 3px 0 0; font-size: 20px; }
+      .nav-label { margin: 16px 10px 7px; color: var(--zb-muted); font-size: 11px; font-weight: 700; }
+      .nav-list { display: grid; gap: 3px; }
+      .nav-item { display: grid; grid-template-columns: 28px minmax(0, 1fr) 8px; align-items: center; gap: 7px; min-height: 38px; padding: 5px 9px; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; }
+      .nav-item:hover { background: color-mix(in srgb, var(--zb-accent) 8%, transparent); }
+      .nav-item[aria-current="page"] { background: color-mix(in srgb, var(--zb-accent) 13%, transparent); color: var(--zb-accent); font-weight: 650; }
+      .nav-number { color: var(--zb-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+      .nav-state { width: 7px; height: 7px; border-radius: 50%; background: #a4abb1; }
+      .nav-state.running { background: var(--zb-ok); }
+      .nav-state.failed, .nav-state.blocked { background: var(--zb-danger); }
+      .nav-footer { margin: auto 10px 0; padding-top: 16px; border-top: 1px solid var(--zb-border); color: var(--zb-muted); font-size: 11px; }
+      .content { min-width: 0; padding: 22px clamp(16px, 2.5vw, 32px) 28px; }
+      .content-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+      .eyebrow { margin: 0 0 4px; color: var(--zb-accent); font-size: 11px; font-weight: 700; }
+      h2 { margin: 0; font-size: 21px; line-height: 1.3; }
+      .description { margin: 5px 0 0; color: var(--zb-muted); }
+      .header-actions { display: flex; align-items: center; gap: 8px; }
+      .view-switch { display: inline-flex; padding: 2px; border: 1px solid var(--zb-border); border-radius: 7px; background: var(--zb-surface); }
+      .view-switch button { min-height: 27px; padding: 3px 9px; border: 0; border-radius: 5px; background: transparent; cursor: pointer; font-size: 12px; }
+      .view-switch button[aria-pressed="true"] { background: color-mix(in srgb, var(--zb-accent) 13%, transparent); color: var(--zb-accent); font-weight: 650; }
+      .status { min-height: 27px; padding: 4px 9px; border: 1px solid var(--zb-border); border-radius: 6px; color: var(--zb-muted); font-size: 12px; white-space: nowrap; }
+      .status.running { color: var(--zb-ok); }
+      .status.failed, .status.blocked { color: var(--zb-danger); }
+      .refresh { min-height: 30px; padding: 4px 10px; border: 1px solid var(--zb-border); border-radius: 6px; background: var(--zb-surface); cursor: pointer; }
+      .refresh:disabled { opacity: .45; cursor: default; }
+      .workspace { min-height: 62vh; border-top: 1px solid var(--zb-border); }
+      .module-frame { display: block; width: 100%; height: calc(100vh - 150px); min-height: 620px; border: 0; background: var(--zb-surface); }
+      .empty-state { max-width: 620px; padding: 24px 2px; }
+      .empty-state h3 { margin: 0 0 8px; font-size: 16px; }
+      .empty-state p { margin: 6px 0; color: var(--zb-muted); }
+      .error { color: var(--zb-danger) !important; }
+      code { padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--zb-muted) 12%, transparent); font-size: 12px; }
+      .settings-panel { max-width: 900px; padding: 18px 0 32px; }
+      .settings-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+      .settings-toolbar p { flex: 1 1 280px; margin: 0; color: var(--zb-muted); font-size: 12px; }
+      .settings-button { min-height: 32px; padding: 5px 11px; border: 1px solid var(--zb-border); border-radius: 6px; background: var(--zb-surface); cursor: pointer; }
+      .settings-button.primary { border-color: var(--zb-accent); background: var(--zb-accent); color: #fff; }
+      .settings-button:disabled { opacity: .5; cursor: default; }
+      .settings-message { margin: 8px 0 14px; color: var(--zb-muted); font-size: 12px; }
+      .settings-message.error { color: var(--zb-danger); }
+      .settings-module-toggle, .settings-group { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--zb-border); border-radius: 7px; background: var(--zb-surface); }
+      .settings-module-toggle { display: flex; align-items: center; gap: 10px; }
+      .settings-group > summary { cursor: pointer; font-weight: 650; }
+      .settings-group-body { display: grid; gap: 13px; padding-top: 14px; }
+      .settings-field { display: grid; grid-template-columns: minmax(170px, 240px) minmax(0, 1fr); align-items: start; gap: 16px; }
+      .settings-label { font-weight: 600; }
+      .settings-hint { margin-top: 3px; color: var(--zb-muted); font-size: 12px; font-weight: 400; }
+      .settings-input { width: 100%; min-height: 34px; padding: 6px 9px; border: 1px solid var(--zb-border); border-radius: 6px; background: var(--zb-bg); color: var(--zb-text); font: inherit; }
+      textarea.settings-input { min-height: 84px; resize: vertical; }
+      .settings-input:focus { outline: 2px solid color-mix(in srgb, var(--zb-accent) 40%, transparent); outline-offset: 1px; }
+      .settings-secret { color: var(--zb-muted); font-size: 12px; }
+      .settings-secret-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+      .settings-secret-cell .settings-input { flex: 1 1 220px; min-width: 120px; }
+      .secret-clear[aria-pressed="true"] { border-color: var(--zb-danger); color: var(--zb-danger); }
+      @media (max-width: 760px) {
+        .app { grid-template-columns: 1fr; }
+        .nav { min-height: auto; padding: 12px; border-right: 0; border-bottom: 1px solid var(--zb-border); }
+        .brand { padding: 0 6px 10px; }
+        .nav-label { margin: 10px 6px 6px; }
+        .nav-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .nav-footer { display: none; }
+        .content { padding: 16px 12px 20px; }
+        .module-frame { height: 72vh; min-height: 520px; }
+        .content-header { flex-wrap: wrap; }
+        .settings-field { grid-template-columns: 1fr; gap: 6px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="nav" aria-label="知伴模块">
+        <div class="brand"><p>ASTRBOT · ONEBOT V11</p><h1>知伴</h1></div>
+        <p class="nav-label">模块</p>
+        <nav id="moduleNav" class="nav-list" aria-label="功能模块"></nav>
+        <p class="nav-footer">配置入口：AstrBot → 插件 → 知伴</p>
+      </aside>
+      <main class="content">
+        <header class="content-header">
+          <div>
+            <p class="eyebrow">知伴应用</p>
+            <h2 id="moduleTitle">模块</h2>
+            <p id="moduleDescription" class="description"></p>
+          </div>
+          <div class="header-actions">
+            <div class="view-switch" role="group" aria-label="知伴视图">
+              <button id="showModuleView" type="button" aria-pressed="true">功能</button>
+              <button id="showSettingsView" type="button" aria-pressed="false">配置</button>
+            </div>
+            <span id="moduleStatus" class="status">读取状态…</span>
+            <button id="refreshModule" class="refresh" type="button" disabled>刷新</button>
+          </div>
+        </header>
+        <section id="moduleWorkspace" class="workspace" aria-live="polite"></section>
+        <section id="settingsWorkspace" class="workspace" aria-live="polite" hidden></section>
+      </main>
+    </div>
+    <script src="/api/plugin/page/bridge-sdk.js"></script>
+    <script src="./host_bridge.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

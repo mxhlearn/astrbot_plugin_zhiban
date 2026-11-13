@@ -10,3 +10,7 @@ staging/
 *.sqlite*
 dist/
 .test-runtime-memory/
+/data/
+/pytest-of-*/
+/astrbot_plugin_zhiban/views/知伴/modules/
+/astrbot_plugin_zhiban/views/知伴/.zhiban_generated_assets.json

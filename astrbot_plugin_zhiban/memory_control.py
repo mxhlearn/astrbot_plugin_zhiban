@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -19,6 +20,7 @@ def scope_for_event(event) -> str:
 class MemoryControl:
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
+        self._db_lock = threading.Lock()
 
     @staticmethod
     def _scope(scope: str) -> str:
@@ -35,34 +37,35 @@ class MemoryControl:
 
     def _run(self, operation: Callable[[sqlite3.Connection], Any]) -> Any:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path, timeout=5) as db:
-            db.row_factory = sqlite3.Row
-            db.execute("PRAGMA journal_mode=WAL")
-            db.execute("PRAGMA busy_timeout=5000")
-            db.executescript("""
-                CREATE TABLE IF NOT EXISTS proposals (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    scope TEXT NOT NULL, text TEXT NOT NULL, reason TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'pending', created REAL NOT NULL,
-                    actor TEXT NOT NULL DEFAULT '', decided REAL
-                );
-                CREATE INDEX IF NOT EXISTS proposal_scope_status ON proposals(scope,status);
-                CREATE TABLE IF NOT EXISTS versions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL,
-                    text TEXT NOT NULL, proposal_id INTEGER, parent_id INTEGER,
-                    actor TEXT NOT NULL, created REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS current_persona (
-                    scope TEXT PRIMARY KEY, version_id INTEGER
-                );
-                CREATE TABLE IF NOT EXISTS persona_audit (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL,
-                    action TEXT NOT NULL, actor TEXT NOT NULL, target_id INTEGER,
-                    created REAL NOT NULL
-                );
-            """)
-            db.execute("BEGIN IMMEDIATE")
-            return operation(db)
+        with self._db_lock:
+            with sqlite3.connect(self.db_path, timeout=5) as db:
+                db.row_factory = sqlite3.Row
+                db.execute("PRAGMA journal_mode=WAL")
+                db.execute("PRAGMA busy_timeout=5000")
+                db.executescript("""
+                    CREATE TABLE IF NOT EXISTS proposals (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        scope TEXT NOT NULL, text TEXT NOT NULL, reason TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'pending', created REAL NOT NULL,
+                        actor TEXT NOT NULL DEFAULT '', decided REAL
+                    );
+                    CREATE INDEX IF NOT EXISTS proposal_scope_status ON proposals(scope,status);
+                    CREATE TABLE IF NOT EXISTS versions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL,
+                        text TEXT NOT NULL, proposal_id INTEGER, parent_id INTEGER,
+                        actor TEXT NOT NULL, created REAL NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS current_persona (
+                        scope TEXT PRIMARY KEY, version_id INTEGER
+                    );
+                    CREATE TABLE IF NOT EXISTS persona_audit (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL,
+                        action TEXT NOT NULL, actor TEXT NOT NULL, target_id INTEGER,
+                        created REAL NOT NULL
+                    );
+                """)
+                db.execute("BEGIN IMMEDIATE")
+                return operation(db)
 
     async def propose(self, scope: str, text: str, reason: str = "") -> int:
         scope = self._scope(scope)

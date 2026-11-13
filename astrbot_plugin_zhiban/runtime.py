@@ -55,6 +55,29 @@ def _merge_defaults(value: dict, default: dict) -> dict:
     return result
 
 
+def _safe_startup_error(state: "_ModuleState", exc: Exception) -> str:
+    """Expose actionable Qzone import categories without logging paths or secrets."""
+    error_type = type(exc).__name__
+    if state.key != "qzone" or not isinstance(exc, RuntimeError):
+        return error_type
+    message = str(exc)
+    if message == "standalone QQ 空间插件仍在运行":
+        return "RuntimeError: 独立 QQ 空间插件仍在运行"
+    if message.endswith("is already loaded without a file path"):
+        return "RuntimeError: qzone_bridge 模块缺少来源路径"
+    if "resolved outside plugin directory" in message:
+        actual_path = message.split(": ", 1)[-1].replace("/", "\\")
+        source = actual_path.rsplit("\\qzone_bridge\\", 1)[0].rsplit("\\", 1)[-1]
+        return f"RuntimeError: qzone_bridge 从 {source or '未知目录'} 加载"
+    if message.endswith("is already loaded from an unrelated package"):
+        return "RuntimeError: qzone_bridge 名称与其他包冲突"
+    if message.startswith("qzone_bridge package is missing:"):
+        return "RuntimeError: 知伴内置 qzone_bridge 文件缺失"
+    if message.startswith("unable to load qzone_bridge package from "):
+        return "RuntimeError: 知伴内置 qzone_bridge 无法导入"
+    return error_type
+
+
 class ModuleConfig(dict):
     """Upstream-compatible configuration backed by one parent settings object."""
 
@@ -122,11 +145,8 @@ class _ModuleContext:
         self._host = host
         self._state = state
         self._context = host.parent.context
-        if state.key == "memory":
-            self.zhiban_data_dir = host.data_dir / "memory"
-        else:
-            from astrbot.core.star.star_tools import StarTools
-            self.zhiban_data_dir = Path(StarTools.get_data_dir(state.package))
+        from astrbot.core.star.star_tools import StarTools
+        self.zhiban_data_dir = Path(StarTools.get_data_dir(state.package))
         self.zhiban_data_dir.mkdir(parents=True, exist_ok=True)
         self.zhiban_module_key = state.key
         self.zhiban_parent = host.parent
@@ -207,14 +227,60 @@ class ModuleHost:
             self._refresh_owner_handlers()
             return self.status()
 
+    async def reload_module(self, key: str):
+        """Apply current configuration to one module with owned-resource cleanup."""
+        async with self._lock:
+            if not self._started or self._closed:
+                raise RuntimeError("知伴模块宿主尚未启动或已经关闭")
+            state = self._states.get(key)
+            if state is None:
+                raise KeyError("未知模块")
+
+            if state.state == "running":
+                state.state = "stopping"
+                await self._terminate_instance(state)
+            self._cleanup_registration(state)
+            self._evict_modules(state)
+            state.instance = None
+            state.context = None
+            state.handlers.clear()
+            state.tools.clear()
+            state.routes.clear()
+            state.previous_tools.clear()
+            state.previous_routes.clear()
+            state.imported.clear()
+            state.error = None
+
+            section = self.config.get(key, {})
+            if not isinstance(section, dict) or not section.get("enabled", True):
+                state.state = "disabled"
+                self._refresh_owner_handlers()
+                return self.status()
+
+            conflict = self._active_original(state)
+            if conflict:
+                state.state = "blocked"
+                state.error = f"原插件仍在运行：{conflict}"
+            else:
+                await self._start_module(state)
+            self._refresh_owner_handlers()
+            return self.status()
+
     def _active_original(self, state):
         _, registry, _, _ = _framework()
         names = {state.package, state.package.removeprefix("astrbot_plugin_")}
+        # The current standalone AstrBot plugin is named qzone, while the
+        # bundled upstream implementation retained the newer qzone_ultra id.
+        if state.package == "astrbot_plugin_qzone_ultra":
+            names.add("astrbot_plugin_qzone")
+        root_names = {state.package}
+        if state.package == "astrbot_plugin_qzone_ultra":
+            root_names.add("astrbot_plugin_qzone")
         for metadata in registry:
             if metadata.module_path == self.owner:
                 continue
             if (getattr(metadata, "name", None) in names
-                    or getattr(metadata, "root_dir_name", None) == state.package):
+                    or getattr(metadata, "root_dir_name", None) in root_names):
                 if getattr(metadata, "activated", False) and getattr(metadata, "star_cls", None) is not None:
                     return getattr(metadata, "name", state.package)
         return None
@@ -271,8 +337,12 @@ class ModuleHost:
             raise
         except Exception as exc:
             # Avoid serializing provider URLs, tokens or configuration in status.
-            state.error = type(exc).__name__
-            self.log.error("知伴模块 %s 启动失败（%s）", state.label, type(exc).__name__)
+            missing_name = getattr(exc, "name", None)
+            state.error = _safe_startup_error(state, exc)
+            diagnostic = state.error
+            if isinstance(exc, (NameError, ModuleNotFoundError)) and missing_name:
+                diagnostic = f"{diagnostic}: {missing_name}"
+            self.log.error("知伴模块 %s 启动失败（%s）", state.label, diagnostic)
             await self._terminate_instance(state)
             self._collect_failed_registration(state, before_handlers, before_tools, before_tool_names)
             self._cleanup_registration(state)

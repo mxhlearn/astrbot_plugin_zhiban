@@ -1,6 +1,6 @@
 name: astrbot_plugin_zhiban
 display_name: 知伴
-desc: 整合现有服务器的聊天、记忆、表情、语音、主动问候、图片、音乐、历史查询、QQ空间和内容过滤。
+desc: 运行于 AstrBot，支持 OneBot v11（aiocqhttp）；不限定 Linux，可在依赖满足的 Windows/Linux 环境使用。整合聊天、记忆、表情、语音、主动问候、图片、音乐、历史查询、QQ空间和内容过滤。
 version: 0.1.0
 author: mxhlearn
 astrbot_version: '>=4.29.3,<4.30'
