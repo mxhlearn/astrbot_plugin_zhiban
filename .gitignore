@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+.venv/
+upstream/
+private/
+staging/
+*.zip
+*.log
+*.db
+*.sqlite*
+dist/
+.test-runtime-memory/
