@@ -1,20 +1,27 @@
 (() => {
   const modules = [
-    { key: 'heart', label: '聊天互动', logo: 'heart.png', page: true, group: '聊天系统' },
-    { key: 'memory', label: '记忆成长', logo: 'memory.png', page: true },
-    { key: 'meme', label: '表情互动', logo: 'meme.png', page: true },
-    { key: 'tts', label: '语音回复', logo: 'tts.png', page: true },
-    { key: 'proactive', label: '主动问候', logo: 'proactive.png', page: false, group: '聊天系统' },
-    { key: 'brush', label: '图片创作', logo: 'brush.png', page: true },
-    { key: 'music', label: '音乐点播', logo: 'music.png', page: true },
-    { key: 'eye', label: '历史查询', logo: 'eye.png', page: false, group: '聊天系统' },
-    { key: 'qzone', label: 'QQ 动态', logo: 'qzone.png', page: true, group: 'QQ 社交' },
-    { key: 'filter', label: '内容过滤', logo: 'filter.svg', page: false, group: '聊天系统' },
-    { key: 'qqprofile', label: 'QQ 资料', logo: 'qqprofile.png', page: false, group: 'QQ 社交' },
+    { key: 'heart', label: '聊天互动', logo: 'heart.png', page: true, group: '聊天系统', groupKey: 'chat' },
+    { key: 'memory', label: '记忆成长', logo: 'memory.png', page: true, group: '记忆成长', groupKey: 'memory' },
+    { key: 'meme', label: '表情互动', logo: 'meme.png', page: true, group: '表达创作', groupKey: 'creative' },
+    { key: 'tts', label: '语音回复', logo: 'tts.png', page: true, group: '表达创作', groupKey: 'creative' },
+    { key: 'proactive', label: '主动问候', logo: 'proactive.png', page: false, group: '聊天系统', groupKey: 'chat' },
+    { key: 'brush', label: '图片创作', logo: 'brush.png', page: true, group: '表达创作', groupKey: 'creative' },
+    { key: 'music', label: '音乐点播', logo: 'music.png', page: true, group: '表达创作', groupKey: 'creative' },
+    { key: 'eye', label: '历史查询', logo: 'eye.png', page: false, group: '聊天系统', groupKey: 'chat' },
+    { key: 'qzone', label: 'QQ 动态', logo: 'qzone.png', page: true, group: 'QQ 社交', groupKey: 'social' },
+    { key: 'qqprofile', label: 'QQ 资料', logo: 'qqprofile.png', page: false, group: 'QQ 社交', groupKey: 'social' },
   ];
-  const apiNames = { heart: 'astrbot_plugin_angel_heart', memory: 'astrbot_plugin_livingmemory', meme: 'meme_manager', tts: 'astrbot_plugin_breeze_tts', brush: 'astrbot_plugin_angel_brush', music: 'astrbot_plugin_listen_music', eye: 'astrbot_plugin_angel_eye', qzone: 'astrbot_plugin_qzone_ultra', filter: 'astrbot_plugin_link_filter', qqprofile: 'astrbot_plugin_qqprofile' };
+  const groups = [
+    { key: 'overview', label: '总览' },
+    { key: 'chat', label: '聊天系统' },
+    { key: 'memory', label: '记忆成长' },
+    { key: 'creative', label: '表达创作' },
+    { key: 'social', label: 'QQ 社交' },
+  ];
+  const apiNames = { heart: 'astrbot_plugin_angel_heart', memory: 'astrbot_plugin_livingmemory', meme: 'meme_manager', tts: 'astrbot_plugin_breeze_tts', brush: 'astrbot_plugin_angel_brush', music: 'astrbot_plugin_listen_music', eye: 'astrbot_plugin_angel_eye', qzone: 'astrbot_plugin_qzone_ultra', qqprofile: 'astrbot_plugin_qqprofile' };
   const appPluginName = 'astrbot_plugin_zhiban';
   const moduleScript = document.currentScript;
+  const embedded = new URL(window.location.href).searchParams.get('embedded') === '1';
   const moduleKey = moduleScript?.dataset.moduleKey;
   const viewRoot = new URL('.', moduleScript.src);
   const current = modules.find((item) => item.key === moduleKey);
@@ -60,111 +67,218 @@
   window.AstrBotPluginView = window.AstrBotPluginPage = bridged;
 
   const style = document.createElement('style');
-  style.textContent = '#zhiban-module-nav{position:fixed;right:16px;bottom:16px;z-index:2147483000;font:13px/1.45 -apple-system,BlinkMacSystemFont,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif;color:#24302e}#zhiban-module-nav *{box-sizing:border-box;letter-spacing:0}#zhiban-module-nav .zb-trigger{display:flex;align-items:center;gap:8px;min-height:42px;padding:7px 12px;border:1px solid #d5e0dc;border-radius:22px;background:#fff;box-shadow:0 4px 18px #17221b26;color:#24302e;cursor:pointer}#zhiban-module-nav .zb-trigger img{width:26px;height:26px;object-fit:contain;border-radius:6px}#zhiban-module-nav .zb-panel{position:absolute;right:0;bottom:52px;width:min(340px,calc(100vw - 24px));max-height:min(70vh,620px);overflow:auto;border:1px solid #d5e0dc;border-radius:12px;background:#fff;box-shadow:0 12px 36px #17221b30;padding:14px}#zhiban-module-nav .zb-heading{display:flex;align-items:center;gap:10px;margin:0 0 12px;font-size:14px;font-weight:650}#zhiban-module-nav .zb-heading img{width:30px;height:30px;object-fit:contain}#zhiban-module-nav .zb-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:12px}#zhiban-module-nav .zb-links a{display:flex;justify-content:center;align-items:center;min-height:34px;border:1px solid #d5e0dc;border-radius:7px;color:#263a37;text-decoration:none;background:#f8faf8}#zhiban-module-nav .zb-links a[aria-current=true]{border-color:#548e80;background:#e9f4ef;color:#205a4e}#zhiban-module-nav .zb-list{display:grid;gap:3px}#zhiban-module-nav .zb-module{display:flex;align-items:center;gap:9px;min-height:38px;padding:5px 8px;border-radius:7px;color:#263a37;text-decoration:none}#zhiban-module-nav .zb-module:hover{background:#edf4f0}#zhiban-module-nav .zb-module[aria-current=true]{background:#e7f0ed;font-weight:600}#zhiban-module-nav .zb-module img{width:25px;height:25px;object-fit:contain;flex:none}#zhiban-module-nav .zb-state{width:7px;height:7px;margin-left:auto;border-radius:50%;background:#8b9994}#zhiban-module-nav .zb-state.running{background:#32a36b}#zhiban-module-nav .zb-state.failed,#zhiban-module-nav .zb-state.blocked{background:#d34c42}:root[data-theme=dark] #zhiban-module-nav{color:#edf2ed}:root[data-theme=dark] #zhiban-module-nav .zb-trigger,:root[data-theme=dark] #zhiban-module-nav .zb-panel{background:#202720;border-color:#3b473d;color:#edf2ed}:root[data-theme=dark] #zhiban-module-nav .zb-links a,:root[data-theme=dark] #zhiban-module-nav .zb-module{background:#202720;border-color:#3b473d;color:#edf2ed}:root[data-theme=dark] #zhiban-module-nav .zb-links a[aria-current=true],:root[data-theme=dark] #zhiban-module-nav .zb-module[aria-current=true]{background:#2b3e35;color:#c9f1df}';
-  style.textContent += '#zhiban-module-nav .zb-group{margin-left:auto;color:#71827b;font-size:10px;font-weight:500;white-space:nowrap}#zhiban-module-nav .zb-state{margin-left:6px}';
+  style.id = 'zhiban-shell-style';
+  style.textContent = `
+    html[data-zhiban-shell="true"] { --bg-app:#f5f8f4!important;--bg-sidebar:#eef5ec!important;--bg-card:#ffffff!important;--bg-hover:#e7f0e7!important;--accent-light:#ddeedc!important;--graph-surface:#f8fbf7!important;--border-light:#dce6da!important;--border-normal:#bdcfbb!important;--text-primary:#24382c!important;--text-secondary:#617367!important;--text-tertiary:#718477!important;--text-inverse:#ffffff!important;--accent:#2f6b4f!important;--accent-hover:#24563f!important;--signal:#b7d7bd!important;--cyan:#3f7661!important;--coral:#9b5c46!important;--primary-color:#2f6b4f!important;--primary:#2f6b4f!important;--accent-color:#2f6b4f!important;--link-color:#2f6b4f!important; }
+    :root { --zb-side:#eef5ec;--zb-bg:#f5f8f4;--zb-white:#fff;--zb-soft:#ddeedc;--zb-green:#2f6b4f;--zb-text:#24382c;--zb-muted:#617367;--zb-line:#dce6da; }
+    :root[data-theme="dark"] { --zb-side:#162117;--zb-bg:#111811;--zb-white:#1b261c;--zb-soft:#263a2b;--zb-green:#8fc7a5;--zb-text:#eef5ef;--zb-muted:#aebbad;--zb-line:#354637; }
+    html[data-zhiban-shell="true"] body { padding-left:196px!important;background:var(--zb-bg)!important;color:var(--zb-text)!important; }
+    #zhiban-module-nav { position:fixed;inset:0 auto 0 0;z-index:2147483000;display:flex;flex-direction:column;width:196px;height:100vh;padding:22px 13px 16px;border-right:1px solid var(--zb-line);background:var(--zb-side);color:var(--zb-text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;box-shadow:4px 0 18px rgba(42,70,48,.05); }
+    #zhiban-module-nav * { box-sizing:border-box;letter-spacing:0; }
+    #zhiban-module-nav .zb-brand { display:flex;align-items:center;gap:10px;padding:0 11px 23px;color:var(--zb-green);text-decoration:none; }
+    #zhiban-module-nav .zb-brand img { width:40px;height:40px;flex:0 0 40px;border-radius:11px;object-fit:contain;background:var(--zb-white); }
+    #zhiban-module-nav .zb-brand strong { display:block;font-size:20px;font-weight:650;line-height:1.25; }
+    #zhiban-module-nav .zb-brand small { display:block;color:var(--zb-muted);font-size:10px;font-weight:400;letter-spacing:1.4px; }
+    #zhiban-module-nav .zb-primary,#zhiban-module-nav .zb-list { display:grid;gap:6px; }
+    #zhiban-module-nav .zb-primary a,#zhiban-module-nav .zb-module { display:flex;align-items:center;gap:10px;min-height:42px;padding:9px 12px;border-radius:9px;color:var(--zb-muted);text-decoration:none;font-weight:520; }
+    #zhiban-module-nav .zb-primary a:hover,#zhiban-module-nav .zb-module:hover { background:color-mix(in srgb,var(--zb-soft) 58%,transparent); }
+    #zhiban-module-nav .zb-primary a[aria-current="page"],#zhiban-module-nav .zb-module[aria-current="page"] { background:var(--zb-soft);color:var(--zb-green);font-weight:650; }
+    #zhiban-module-nav .zb-primary-icon { display:grid;width:20px;height:20px;flex:0 0 20px;place-items:center;border:1.5px solid currentColor;border-radius:6px;font-size:9px;line-height:1; }
+    #zhiban-module-nav .zb-section-label { margin:19px 10px 7px;color:var(--zb-muted);font-size:10px;font-weight:600; }
+    #zhiban-module-nav .zb-module { min-height:38px;padding:7px 10px;font-size:13px; }
+    #zhiban-module-nav .zb-module-mark { display:grid;width:24px;height:24px;flex:0 0 24px;place-items:center;border:1px solid var(--zb-line);border-radius:7px;background:var(--zb-white);color:var(--zb-green);font-size:10px;font-weight:650; }
+    #zhiban-module-nav .zb-state { width:7px;height:7px;margin-left:auto;border-radius:50%;background:var(--zb-muted); }
+    #zhiban-module-nav .zb-state.running { background:#2f8b58;box-shadow:0 0 0 3px rgba(47,139,88,.12); }
+    #zhiban-module-nav .zb-state.not_ready,#zhiban-module-nav .zb-state.unknown { background:#b47a20;box-shadow:0 0 0 3px rgba(180,122,32,.12); }
+    #zhiban-module-nav .zb-state.failed,#zhiban-module-nav .zb-state.blocked { background:#b4473d; }
+    #zhiban-business-notice { position:fixed;right:18px;bottom:18px;z-index:2147482999;max-width:min(420px,calc(100vw - 230px));padding:12px 14px;border:1px solid #d9c89e;border-radius:10px;background:#fff9ea;color:#6f4d12;box-shadow:0 10px 30px rgba(62,49,20,.14);font:12px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+    #zhiban-business-notice strong { display:block;margin-bottom:2px;font-size:13px; }
+    #zhiban-module-nav .zb-actions { display:flex;gap:7px;margin-top:13px; }
+    #zhiban-module-nav .zb-actions a { flex:1;display:flex;justify-content:center;min-height:34px;padding:6px 9px;border:1px solid var(--zb-line);border-radius:8px;background:var(--zb-white);color:var(--zb-text);text-decoration:none;font-size:11px; }
+    #zhiban-module-nav .zb-footer { margin-top:auto;padding:13px 10px 0;border-top:1px solid var(--zb-line);color:var(--zb-muted);font-size:10px; }
+    #zhiban-module-nav .zb-footer strong { display:block;color:var(--zb-green);font-size:10px; }
+    html[data-zhiban-shell="true"] .card.promo,
+    html[data-zhiban-shell="true"] .card.invite {
+      border:1px solid #dce6da!important;
+      background:#edf4e9!important;
+      background-image:none!important;
+      color:#24382c!important;
+      box-shadow:none!important;
+    }
+    html[data-zhiban-shell="true"] .card.promo button,
+    html[data-zhiban-shell="true"] .card.invite button { border-color:#dce6da!important;background:#fff!important;color:#2f6b4f!important; }
+    @media(max-width:1100px){html[data-zhiban-shell="true"] body{padding-left:0!important;padding-top:116px!important}#zhiban-module-nav{right:0;bottom:auto;width:auto;height:auto;min-height:0;padding:10px 12px;border-right:0;border-bottom:1px solid var(--zb-line)}#zhiban-module-nav .zb-brand{padding:0 4px 9px}#zhiban-module-nav .zb-brand img{width:32px;height:32px;flex-basis:32px}#zhiban-module-nav .zb-brand strong{font-size:17px}#zhiban-module-nav .zb-brand small,#zhiban-module-nav .zb-section-label,#zhiban-module-nav .zb-footer{display:none}#zhiban-module-nav .zb-primary{grid-template-columns:repeat(5,minmax(0,1fr));gap:3px}#zhiban-module-nav .zb-primary a{justify-content:center;min-height:38px;padding:6px 2px;font-size:10px;text-align:center}#zhiban-module-nav .zb-primary-icon{display:none}#zhiban-module-nav .zb-list{display:none}#zhiban-module-nav .zb-actions{position:absolute;top:14px;right:12px;margin:0}#zhiban-module-nav .zb-actions a{min-width:44px;min-height:28px;padding:3px 6px;font-size:10px}}
+    html[data-zhiban-shell="true"] .n-button--primary-type,
+    html[data-zhiban-shell="true"] .btn-primary,
+    html[data-zhiban-shell="true"] .button-primary,
+    html[data-zhiban-shell="true"] .el-button--primary,
+    html[data-zhiban-shell="true"] .ant-btn-primary { background:#2f6b4f!important;border-color:#2f6b4f!important;color:#fff!important; }
+    html[data-zhiban-shell="true"] .n-button--primary-type:hover,
+    html[data-zhiban-shell="true"] .btn-primary:hover,
+    html[data-zhiban-shell="true"] .button-primary:hover,
+    html[data-zhiban-shell="true"] .el-button--primary:hover,
+    html[data-zhiban-shell="true"] .ant-btn-primary:hover { background:#24563f!important;border-color:#24563f!important; }
+    html[data-zhiban-shell="true"] .n-radio-button--checked,
+    html[data-zhiban-shell="true"] .n-checkbox-box--checked { border-color:#2f6b4f!important; }
+    html[data-zhiban-shell="true"] .n-radio-button--checked .n-radio__label { color:#2f6b4f!important; }
+    html[data-zhiban-shell="true"] .n-menu-item-content--selected { background:#e8f1e7!important; }
+    html[data-zhiban-shell="true"] .n-menu-item-content--selected .n-menu-item-content-header { color:#2f6b4f!important; }
+    html[data-zhiban-shell="true"] :is(input,textarea,select):focus { border-color:#2f6b4f!important; }
+    html[data-zhiban-shell="true"] a[role="tab"][aria-selected="true"] { color:#2f6b4f!important;border-color:#2f6b4f!important; }
+  `;
+  document.head.append(style);
 
   function shellUrl(view, key) {
+    const item = modules.find((entry) => entry.key === key) || current;
     const url = new URL('index.html', viewRoot);
+    url.searchParams.set('group', view === 'overview' ? 'overview' : item.groupKey);
     url.searchParams.set('module', key);
     url.searchParams.set('view', view);
     return url.href;
   }
 
-  function destination(item) {
-    if (!item.page) return shellUrl('overview', item.key);
+  function destination(item, view = 'workbench') {
+    if (view === 'settings' || !item.page) return shellUrl(view, item.key);
     return new URL('modules/' + item.key + '/index.html', viewRoot).href;
   }
 
+  function groupDestination(groupKey) {
+    if (groupKey === 'overview') return shellUrl('overview', moduleKey);
+    const target = modules.find((item) => item.groupKey === groupKey && item.page) || modules.find((item) => item.groupKey === groupKey);
+    return target ? destination(target) : shellUrl('overview', moduleKey);
+  }
+
   function renderNavigation(order, states) {
-    const root = document.createElement('div');
+    if (document.getElementById('zhiban-module-nav')) return;
+    document.documentElement.dataset.zhibanShell = 'true';
+    const root = document.createElement('aside');
     root.id = 'zhiban-module-nav';
-    const trigger = document.createElement('button');
-    trigger.className = 'zb-trigger';
-    trigger.type = 'button';
-    trigger.setAttribute('aria-expanded', 'false');
-    trigger.setAttribute('aria-label', '打开知伴模块菜单');
-    trigger.title = '知伴模块菜单';
-    const brand = document.createElement('img');
-    brand.src = new URL('logo.png', viewRoot).href;
-    brand.alt = '';
-    brand.setAttribute('aria-hidden', 'true');
-    const triggerText = document.createElement('span');
-    triggerText.textContent = '知伴 · ' + current.label;
-    trigger.append(brand, triggerText);
-
-    const panel = document.createElement('section');
-    panel.className = 'zb-panel';
-    panel.hidden = true;
-    panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-label', '知伴模块菜单');
-    const heading = document.createElement('h2');
-    heading.className = 'zb-heading';
-    const headingLogo = document.createElement('img');
-    headingLogo.src = new URL('logos/' + current.logo, viewRoot).href;
-    headingLogo.alt = '';
-    headingLogo.setAttribute('aria-hidden', 'true');
-    const headingText = document.createElement('span');
-    headingText.textContent = current.label;
-    heading.append(headingLogo, headingText);
-
-    const viewLinks = document.createElement('nav');
-    viewLinks.className = 'zb-links';
-    for (const [view, label] of [['overview', '概览'], ['module', '功能'], ['settings', '配置']]) {
+    root.setAttribute('aria-label', '知伴侧栏');
+    const brand = document.createElement('a');
+    brand.className = 'zb-brand';
+    brand.href = shellUrl('overview', moduleKey);
+    const brandLogo = document.createElement('img');
+    brandLogo.src = new URL('logo.png', viewRoot).href;
+    brandLogo.alt = '';
+    const brandText = document.createElement('span');
+    const brandName = document.createElement('strong');
+    brandName.textContent = '知伴';
+    const brandNote = document.createElement('small');
+    brandNote.textContent = '陪伴 · 自然生长';
+    brandText.append(brandName, brandNote);
+    brand.append(brandLogo, brandText);
+    const primary = document.createElement('nav');
+    primary.className = 'zb-primary';
+    primary.setAttribute('aria-label', '知伴一级功能');
+    const marks = { overview: '▦', chat: '◇', memory: '◉', creative: '✧', social: '○' };
+    for (const group of groups) {
       const link = document.createElement('a');
-      link.href = view === 'module' ? destination(current) : shellUrl(view, moduleKey);
-      link.textContent = label;
-      link.setAttribute('aria-current', view === 'module' ? 'true' : 'false');
-      viewLinks.append(link);
+      link.href = groupDestination(group.key);
+      if (group.key === current.groupKey) link.setAttribute('aria-current', 'page');
+      const mark = document.createElement('span');
+      mark.className = 'zb-primary-icon';
+      mark.textContent = marks[group.key];
+      const label = document.createElement('span');
+      label.textContent = group.label;
+      link.append(mark, label);
+      primary.append(link);
     }
-
+    const sectionLabel = document.createElement('div');
+    sectionLabel.className = 'zb-section-label';
+    sectionLabel.textContent = current.group;
     const list = document.createElement('nav');
     list.className = 'zb-list';
-    for (const item of order) {
+    list.setAttribute('aria-label', current.group + '模块');
+    const related = order.filter((item) => item.groupKey === current.groupKey);
+    for (const item of related) {
       const link = document.createElement('a');
       link.className = 'zb-module';
       link.href = destination(item);
-      link.setAttribute('aria-current', item.key === moduleKey ? 'true' : 'false');
-      const logo = document.createElement('img');
-      logo.src = new URL('logos/' + item.logo, viewRoot).href;
-      logo.alt = '';
-      logo.setAttribute('aria-hidden', 'true');
+      link.setAttribute('aria-current', item.key === moduleKey ? 'page' : 'false');
+      const mark = document.createElement('span');
+      mark.className = 'zb-module-mark';
+      mark.textContent = item.label.slice(0, 1);
       const label = document.createElement('span');
       label.textContent = item.label;
-      const group = document.createElement('span');
-      group.className = 'zb-group';
-      group.textContent = item.group || '';
       const state = document.createElement('span');
-      const stateName = states.get(item.key)?.state || '';
+      const readyName = states.get(item.key)?.readiness?.state;
+      const stateName = readyName === 'ready' ? 'running' : readyName || states.get(item.key)?.state || '';
       state.className = 'zb-state ' + stateName;
-      state.setAttribute('aria-label', stateName || '状态未知');
-      link.append(logo, label, group, state);
+      state.setAttribute('aria-label', states.get(item.key)?.readiness?.label || stateName || '状态未知');
+      link.append(mark, label, state);
       list.append(link);
     }
+    const actions = document.createElement('div');
+    actions.className = 'zb-actions';
+    const settingsLink = document.createElement('a');
+    settingsLink.href = shellUrl('settings', moduleKey);
+    settingsLink.textContent = '配置当前模块';
+    actions.append(settingsLink);
+    const footer = document.createElement('div');
+    footer.className = 'zb-footer';
+    const footerStrong = document.createElement('strong');
+    footerStrong.textContent = 'AstrBot · OneBot 11';
+    footer.append(footerStrong, document.createTextNode('十个模块，一个知伴'));
+    root.append(brand, primary, sectionLabel, list, actions, footer);
+    document.body.prepend(root);
+    root.addEventListener('click', (event) => {
+      const anchor = event.target.closest?.('a[href]');
+      if (!anchor || anchor.target === '_blank') return;
+      const target = new URL(anchor.href, location.href);
+      if (target.origin !== location.origin) return;
+      event.preventDefault();
+      window.location.replace(target.href);
+    });
+    renderReadinessNotice(states.get(moduleKey));
+  }
 
-    panel.append(heading, viewLinks, list);
-    root.append(trigger, panel);
+  function renderReadinessNotice(moduleState) {
+    const readiness = moduleState?.readiness || {};
+    if (!['not_ready', 'failed'].includes(readiness.state) || document.getElementById('zhiban-business-notice')) return;
+    const notice = document.createElement('aside');
+    notice.id = 'zhiban-business-notice';
+    const title = document.createElement('strong');
+    title.textContent = current.label + '业务未就绪';
+    const detail = document.createElement('span');
+    detail.textContent = readiness.detail || '请完成模块配置后再使用相关业务功能。';
+    notice.append(title, detail);
+    document.body.append(notice);
+  }
+
+  function installEmbeddedTheme() {
+    document.documentElement.dataset.zhibanEmbedded = 'true';
+    const style = document.createElement('style');
+    style.id = 'zhiban-embedded-theme';
+    style.textContent = `
+      :root {
+        --zb-embed-bg: #f5f8f4;
+        --zb-embed-surface: #ffffff;
+        --zb-embed-soft: #ddeedc;
+        --zb-embed-green: #2f6b4f;
+        --zb-embed-green-dark: #24563f;
+        --zb-embed-text: #24382c;
+        --zb-embed-muted: #617367;
+        --zb-embed-line: #dce6da;
+      }
+      html, body { background: var(--zb-embed-bg) !important; color: var(--zb-embed-text) !important; }
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif !important; }
+      a { color: var(--zb-embed-green); }
+      button, input, select, textarea { font-family: inherit !important; }
+      button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline-color: var(--zb-embed-green) !important; }
+      :is(.card, .panel, .modal, .modal-content, .dialog, .settings-card, .config-card, .page-card) {
+        border-color: var(--zb-embed-line) !important;
+      }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+    `;
     document.head.append(style);
-    document.body.append(root);
-    trigger.addEventListener('click', () => {
-      panel.hidden = !panel.hidden;
-      trigger.setAttribute('aria-expanded', String(!panel.hidden));
-    });
-    document.addEventListener('click', (event) => {
-      if (!root.contains(event.target)) {
-        panel.hidden = true;
-        trigger.setAttribute('aria-expanded', 'false');
-      }
-    });
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        panel.hidden = true;
-        trigger.setAttribute('aria-expanded', 'false');
-      }
-    });
   }
 
   async function start() {
     await bridged.ready();
+    if (embedded) {
+      installEmbeddedTheme();
+      return;
+    }
     let order = modules;
     let states = new Map();
     try {

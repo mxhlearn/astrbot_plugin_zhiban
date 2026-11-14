@@ -31,9 +31,10 @@ def build():
             parts = p.relative_to(PLUGIN).parts
             if set(parts) & {"__pycache__", ".pytest_cache", ".git", "node_modules", "tests"}:
                 continue
-            if parts[:2] == ("modules", "astrbot_plugin_angel_memory"):
-                continue
-            if p.name == ".zhiban_generated_assets.json":
+            if parts[:2] in {
+                ("modules", "astrbot_plugin_angel_memory"),
+                ("modules", "astrbot_plugin_link_filter"),
+            }:
                 continue
             if p.suffix in {".pyc", ".db", ".sqlite3", ".log"} or p.name.startswith(".env"):
                 continue

@@ -14,11 +14,12 @@ PLUGIN_ROOT = ROOT / "astrbot_plugin_zhiban"
 VIEW_ROOT = PLUGIN_ROOT / "views" / "知伴"
 OUTPUT_ROOT = VIEW_ROOT / "modules"
 MANIFEST = VIEW_ROOT / ".zhiban_generated_assets.json"
-LOGO_FALLBACKS = {
-    "filter": Path("assets") / "logos" / "link-filter.svg",
+BRIDGE_ADAPTATIONS = {
+    "scope": "mapped upstream index.html files",
+    "mode": "authenticated SDK and module bridge injection",
+    "theme": "module_bridge.js controlled light-green overrides",
+    "unchanged_non_html_assets": True,
 }
-
-
 def _safe_relative_file(root: Path, value: str) -> Path | None:
     relative = PurePosixPath(value)
     if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
@@ -44,8 +45,6 @@ def _materialize_logos(plugin_root: Path, view_root: Path) -> int:
         key = item["key"]
         package = item["package"]
         source = plugin_root / "modules" / package / "logo.png"
-        if not source.is_file() and key in LOGO_FALLBACKS:
-            source = plugin_root / LOGO_FALLBACKS[key]
         if not source.is_file():
             raise FileNotFoundError(f"Missing logo for module {key}: {source}")
         shutil.copy2(source, logo_root / f"{key}{source.suffix.lower()}")
@@ -70,7 +69,13 @@ def build_views(
     try:
         saved = json.loads(manifest_path.read_text(encoding="utf-8"))
         if isinstance(saved, list):
-            previous = {item for item in saved if isinstance(item, str)}
+            saved_files = saved
+        elif isinstance(saved, dict):
+            saved_files = saved.get("generated_files", [])
+        else:
+            saved_files = []
+        if isinstance(saved_files, list):
+            previous = {item for item in saved_files if isinstance(item, str)}
     except (OSError, UnicodeError, json.JSONDecodeError):
         pass
 
@@ -107,8 +112,13 @@ def build_views(
         if path is not None and path.is_file():
             path.unlink()
 
+    manifest = {
+        "schema_version": 2,
+        "generated_files": sorted(generated),
+        "adaptations": BRIDGE_ADAPTATIONS,
+    }
     manifest_path.write_text(
-        json.dumps(sorted(generated), ensure_ascii=False, indent=2),
+        json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",
         newline="",
     )

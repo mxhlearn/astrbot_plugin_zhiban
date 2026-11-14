@@ -126,6 +126,7 @@ class _ModuleState:
     label: str
     package: str
     prefix: str
+    group: str = ""
     state: str = "disabled"
     error: str | None = None
     instance: Any = None
@@ -198,9 +199,22 @@ class ModuleHost:
                 if state.state == "running"}
 
     def status(self) -> list[dict]:
-        return [{"key": s.key, "label": s.label, "state": s.state,
-                 "error": s.error, "handlers": len(s.handlers), "tools": len(s.tools)}
-                for s in self._states.values()]
+        result = []
+        for state in self._states.values():
+            section = self.config.get(state.key, {})
+            enabled = isinstance(section, dict) and bool(section.get("enabled", True))
+            result.append({
+                "key": state.key,
+                "label": state.label,
+                "group": state.group,
+                "enabled": enabled,
+                "running": state.state == "running",
+                "state": state.state,
+                "error": state.error,
+                "handlers": len(state.handlers),
+                "tools": len(state.tools),
+            })
+        return result
 
     async def start(self):
         async with self._lock:
@@ -212,8 +226,13 @@ class ModuleHost:
             for spec in self.specs:
                 key = _get(spec, "key")
                 package = _get(spec, "package")
-                state = _ModuleState(key, _get(spec, "label", key), package,
-                                     f"{self.package}.modules.{package}")
+                state = _ModuleState(
+                    key,
+                    _get(spec, "label", key),
+                    package,
+                    f"{self.package}.modules.{package}",
+                    _get(spec, "group", ""),
+                )
                 self._states[key] = state
                 section = self.config.get(key, {})
                 if not isinstance(section, dict) or not section.get("enabled", True):

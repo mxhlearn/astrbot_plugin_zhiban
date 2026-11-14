@@ -19,6 +19,7 @@ class ModuleApiRouteTests(unittest.TestCase):
         self.assertEqual(module_api_target("qzone", "page/status"), "astrbot_plugin_qzone_ultra/page/status")
         self.assertEqual(module_api_target("qqprofile", "profile/status"), "astrbot_plugin_qqprofile/profile/status")
         self.assertIsNone(module_api_target("unknown", "status"))
+        self.assertIsNone(module_api_target("filter", "status"))
 
     def test_rejects_path_traversal_and_url_injection(self):
         for path in ("../config", "a/../../secret", "https://evil.test", r"..\admin", "status?token=x", "/", "/packs", "packs/"):

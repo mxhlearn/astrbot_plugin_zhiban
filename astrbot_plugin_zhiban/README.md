@@ -2,180 +2,195 @@
 
 ![知伴 Logo](logo.png)
 
-将服务器原有九个业务插件、已安装的 QQ 资料管理插件和 LivingMemory 记忆模块整合为一个中文插件，保留上游业务实现与补丁，在统一宿主中管理配置、聊天/媒体限额和模块生命周期。
+知伴是一个面向 AstrBot 的中文整合应用，将服务器正在使用的聊天、LivingMemory、表情、语音、图片、音乐、历史查询、QQ 空间和 QQ 资料能力收纳到同一个侧栏入口中。它保留上游业务实现与补丁，由知伴统一管理模块生命周期、状态、配置入口和资源边界。
 
-**运行平台：AstrBot；协议支持：OneBot v11（AstrBot 的 `aiocqhttp` 平台适配器）。插件不是 Linux 专用，也不是独立运行的 OneBot 服务；Windows 和 Linux 均可部署，具体取决于 AstrBot 版本及各模块依赖。**
+**运行形态：AstrBot 插件。协议支持：OneBot v11（AstrBot 的 aiocqhttp 适配器）。系统支持：Windows 与 Linux，具体取决于 AstrBot、Python 和媒体依赖；知伴不是 Linux 专用插件，也不是独立运行的 OneBot 服务。**
 
-安装后，AstrBot 左侧「扩展功能」中会出现单一「知伴」入口。进入后可选择功能模块，再切换到应用内「配置」视图编辑详细参数、密钥与启用状态，保存后点击「应用更改」重载模块。图片创作与音乐点播沿用上游专用配置页面。AstrBot 的「插件 → 知伴」设置仍用于调度和宿主管理参数。
+当前版本：`0.3.0`。兼容范围：AstrBot `>=4.29.3,<4.30`。
 
-## 功能菜单
+## 界面与信息架构
 
-默认按预期使用频率排列，可在 AstrBot 插件设置的「调度与管理 → 菜单排列顺序」调整。顺序是默认值，不是运行时统计。
+侧栏固定五个一级入口，名称不随模块改变：
 
-1. 聊天互动：群聊接话、唤醒和私聊上下文。
-2. 记忆成长：长期记忆、知识工具、嵌入、重排序和人格审批。
-3. 表情互动：服务器现有图库与发送。
-4. 语音回复：BreezeBlue TTS、音色、概率和非流式接口补丁。
-5. 主动问候：保留私聊启用、群聊关闭的服务器设置。
-6. 图片创作：生图、改图、供应商和图片面板。
-7. 音乐点播：Bilibili 搜索、下载和发送。
-8. 历史查询：群记录查询，适配 SnowLuma 2.4.2 分页接口。
-9. QQ 动态：沿用 QQ 空间工具和受管理的后台进程。
-10. 内容过滤：链接过滤规则，与聊天互动、主动问候同属聊天系统。
-11. QQ 资料：管理员可通过 OneBot 更新 QQ 状态、签名、昵称和头像；可选同步人格昵称。
+| 一级入口 | 内容 |
+| --- | --- |
+| 总览 | 运行总览、全局设置 |
+| 聊天系统 | 聊天互动、主动问候、历史查询 |
+| 记忆成长 | LivingMemory、人格建议与检索管理 |
+| 表达创作 | 表情互动、语音回复、图片创作、音乐点播 |
+| QQ 社交 | QQ 动态、QQ 资料 |
 
-界面将聊天互动、主动问候、历史查询和内容过滤放在同一个“聊天系统”入口；QQ 动态与 QQ 资料放在“QQ 社交”入口。每项仍有自己的状态和配置，避免合并后失去原有开关。
+界面统一使用浅绿色背景、白色内容区、深绿色主操作和固定品牌色。桌面使用左侧导航；AstrBot 可用宽度不足时改为顶部五入口导航。已检查正常宽度、1024、768 和 390 像素布局。
 
-模块原有命令与 LLM 工具继续可用。
+“系统设置”不再作为一级入口。跨模块调度、资源上限和模块启停位于“总览 → 全局设置”；模块业务参数仍位于各自功能页，二者使用同一 AstrBot 配置文件与版本校验。
 
-## 目标环境
+## 已整合模块
 
-- 兼容范围：AstrBot `>=4.29.3,<4.30`，OneBot v11 通过 `aiocqhttp` 接入。
-- 支持类型：AstrBot 插件，不是独立 OneBot 服务；OneBot v11 由 AstrBot 的 `aiocqhttp` 平台适配器提供。
-- 操作系统：不限定 Linux；Windows 是当前本地回归平台，Ubuntu 是目标迁移平台。不同系统需安装对应的 Python/系统依赖。
-- 开发回归环境：AstrBot 4.29.3。
-- Linux 目标：Ubuntu Server 24.04 amd64、Python 3.12、AstrBot 4.29.4。
-- 目标桥接：SnowLuma 2.4.2 Linux x64 Lite、Node.js 24.22.3、OneBot v11 反向 WebSocket。
-- Linux QQ 3.2.35 amd64 仍是待联调候选。
-- 新部署到 SnowLuma 2.4.2 时，将历史查询设置 history_api_mode 改为 snowluma_v24；原 Windows 服务继续使用导入的旧分页模式。
-- 插件包不含 QQ、SnowLuma、AstrBot 或模型凭据。
-
-### 功能依赖
-
-| 模块 | 主要功能 | 额外条件 |
+| 模块 | 主要能力 | 页面/运行方式 |
 | --- | --- | --- |
-| 聊天互动 | 群聊接话、主动问候、历史查询、内容过滤和上下文 | 配置 AstrBot 对话模型；OneBot v11 群聊事件；相关功能在应用中归入聊天系统，底层开关保持独立 |
-| 记忆成长 | 长期记忆、知识工具、人格审批 | LivingMemory 使用的模型；嵌入/重排序按需配置，未配置时使用关键词回退 |
-| 表情互动 | 本地图库、表情发送 | 现有图库；语义检索需对应索引/模型配置 |
-| 语音回复 | 回复转语音、音色与语速 | BreezeBlue 服务凭据；这是 TTS，不提供语音转文字 |
-| 主动问候 | 私聊主动消息、定时任务 | AstrBot 模型与调度环境；群聊默认关闭 |
-| 图片创作 | 文生图、图生图 | 至少配置一个受支持的图像生成服务 |
-| 音乐点播 | 搜索、获取与发送音频 | Bilibili 可访问性、FFmpeg 与平台文件发送能力 |
-| 历史查询 | 群聊记录搜索 | OneBot v11 记录来源；不同部署可需配置对应分页适配模式 |
-| QQ 动态 | 读取、发布和管理空间内容 | QQ 空间 Cookie、OneBot；部分任务会启动独立子进程 |
-| QQ 资料 | 更新状态、签名、昵称与头像 | OneBot v11 aiocqhttp 适配器；改资料命令限定管理员 |
-| 内容过滤 | 移除回复中的链接 | 无独立模型；随聊天输出路径执行 |
+| 聊天互动 | 群聊接话、唤醒、上下文、私聊处理 | 天使之心页面 |
+| 记忆成长 | LivingMemory 长期记忆、检索、知识图谱、人格审批 | LivingMemory 页面与知伴审批库 |
+| 表情互动 | 服务器图库、分类、发送与语义检索 | 表情包管理页面 |
+| 语音回复 | BreezeBlue TTS、音色、语速和概率 | 语音设置页面 |
+| 主动问候 | 私聊主动消息与后台调度 | AstrBot 事件和调度 |
+| 图片创作 | 文生图、改图与供应商 | 天使画笔页面 |
+| 音乐点播 | Bilibili 搜索、下载与发送 | 音乐账号页面 |
+| 历史查询 | 群记录检索与分页适配 | 事件、命令和 LLM 工具 |
+| QQ 动态 | 空间浏览、发布、评论、点赞与任务 | QQ 空间 Ultra 页面 |
+| QQ 资料 | 管理员更新状态、签名、昵称和头像 | 事件、命令与配置页 |
 
-以上是模块的功能与配置条件，不代表所有外部服务均已在每种操作系统上验收。未配置外部服务的模块可以关闭或保留为未就绪状态。
+内容和链接过滤模块不再注册、不进入运行目录，也不进入发布包。AngelMemory 不参与运行，LivingMemory 是唯一记忆模块。旧 AngelMemory 与链接过滤源码目录属于尚未完成的仓库清理项；它们不是知伴运行能力。
 
-QQ 资料管理沿用原插件命令与 LLM 工具：设置状态、设置签名、设置昵称、引用图片设置头像、切换人格和人格列表。修改资料的操作要求管理员权限；该上游模块只支持 OneBot v11 的 aiocqhttp 适配器。
+上游命令、事件处理器、LLM 工具和数据目录继续使用原名称。知伴只代理模块 API，不向子模块开放其他模块的 API 范围。
+
+## 状态与配置
+
+状态拆成三层，避免把“已启用”“进程已运行”和“业务可用”混为一谈：
+
+- 启用：配置中的模块开关。
+- 运行：AstrBot 已加载模块处理器或页面实例。
+- 业务就绪：完成该模块可执行的前置检查。QQ 动态必须取得有效空间 Cookie；缺少 Cookie 时显示黄色“业务未就绪”，不会显示为可直接发布。
+
+配置流程：
+
+- 基础字段优先展开，支持配置项搜索，数字显示范围和单位。
+- 页面状态包含“未保存”“已保存，待应用”“已生效”“保存失败”。
+- 操作包含“仅保存”“保存并应用”和“撤销未保存更改”。
+- 保存使用配置版本；并发冲突时不覆盖用户正在编辑的内容。
+- 密钥字段只显示是否已配置，不回传原值；留空保留原值，清除密钥需要显式选择。
+- 切换页面时提示保留或放弃未保存草稿；草稿中的敏感值不写入浏览器存储。
+- 模块开关只在“总览 → 全局设置”编辑。业务页可显示继承的全局值，但不维护第二套开关。
+
+## 页面与低占用设计
+
+AstrBot 4.29.3 会在插件页外使用受限 sandbox，且签名页面响应包含同源框架限制。因此 0.3.0 不再在知伴页面中嵌套 AstrBot 签名子页面，而是沿用 AstrBot 的受保护页面导航，在每个上游页面注入统一侧栏和经过清单管理的主题适配。
+
+- 当前只加载正在使用的模块页面，不预加载全部十个工作台。
+- 知伴外壳在离开页面后释放页面引用；模块导航使用 `location.replace`，避免往返操作积累浏览历史页面。
+- 总览和工作台可见时约每 5 秒更新一次调度状态；页面隐藏、进入设置或离开工作台后停止知伴状态轮询。上游模块自身若有独立刷新机制，仍按其源码运行，不能由外层 CSS 代为关闭。
+- 静态资源随插件包提供，不依赖网络字体。
+- 媒体、图片和内部列表的缓存及并发限制沿用上游或知伴调度器现有配置。
+
+本机单次性能抽查（Windows、AstrBot 4.29.3、十个模块已加载）：
+
+- 20 次一级入口往返后，浏览器文档对象从 9 降到 3，节点从 952 降到 899，JS 堆从约 23.15 MiB 降到约 20.38 MiB；活动 frame 从 10 变为 12。
+- AstrBot 主进程空闲工作集约 369 MiB。该数值包含 AstrBot、十个模块和当前页面，不是插件增量，也不是 60 MiB / 2 GB 工程目标的达标证明。
+- 指标会受 Chromium、页面类型和缓存影响；目前没有观察到节点或 JS 堆随往返次数单调增长，但这不是长期内存泄漏证明。
 
 ## 安装与切换
 
-1. 备份 AstrBot 主配置、插件配置、数据库及各插件数据目录。
-2. 安装 requirements.txt，将本目录放入 data/plugins/astrbot_plugin_zhiban。
-3. 在 AstrBot 中停用原来的 angel_heart、angel_memory、angel_eye、angel_brush、breeze_tts、meme_manager、listen_music、proactive_chat、astrbot_plugin_qzone（或 qzone_ultra）、link_filter、qqprofile；若已安装独立的 astrbot_plugin_livingmemory，也先停用它。保留所有原插件目录和数据。
-4. 启用「知伴」并重载 AstrBot。首次启动只读导入仍未配置的旧模块设置；已有知伴配置优先。
-5. 发送 /知伴 菜单 和 /知伴 状态，检查模块状态与工具注册。
-6. 配好模型、嵌入、重排序和生图供应商后，逐项测试功能。
-7. 如需回退，停用知伴并重新启用旧插件；原数据目录保持不动。
+1. 备份 AstrBot 配置目录、知伴插件目录和 `data/plugin_data/` 下的相关数据。
+2. 将 `astrbot_plugin_zhiban` 放入 AstrBot 的插件目录。
+3. 停用原来的独立业务插件：angel_heart、angel_memory、angel_eye、angel_brush、breeze_tts、meme_manager、listen_music、proactive_chat、qzone/qzone_ultra、qqprofile 和独立 LivingMemory。保留原插件目录和数据。
+4. 启用“知伴”并重载 AstrBot。首次启动只读导入尚未配置的旧设置，已有知伴配置优先。
+5. 发送 `/知伴 菜单` 和 `/知伴 状态`，并进入“总览 → 全局设置”确认十个模块的启用、运行和业务就绪状态。
+6. 不要同时启用知伴和同名独立插件。知伴检测到冲突时会阻止重复模块加载。
 
-不要同时启用知伴和同名旧插件。知伴会检测冲突并阻止重复模块加载。
+升级前备份插件目录、`data/config/astrbot_plugin_zhiban_config.json` 和相关 `data/plugin_data/`。升级失败时恢复旧目录和配置，再停止知伴、重新启用旧插件。
 
-### 升级与回退
+## 外部依赖与当前验收边界
 
-升级前备份知伴插件目录、`data/config/astrbot_plugin_zhiban_config.json` 和相关 `data/plugin_data/` 目录。停用知伴后替换插件文件、核对依赖，再启用或重载插件并检查 `/知伴 状态` 与核心功能。升级失败时恢复旧插件目录和配置，再按原切换方式重新启用旧插件。不要在知伴运行时让旧模块同时写入共享数据目录。
+| 模块 | 额外条件 | 本轮本机结果 |
+| --- | --- | --- |
+| 记忆成长 | 对话模型；嵌入/重排序可选 | 已加载，页面和配置可进入 |
+| 表情互动 | 图库数据 | 当前内置包为空，显示首次使用提示 |
+| 语音回复 | BreezeBlue API Key | 页面可进入；未配置密钥，未调用收费接口 |
+| 图片创作 | 至少一个图像供应商 | 页面可进入；未配置供应商，未生成图片 |
+| 音乐点播 | Bilibili 登录、FFmpeg | 页面可进入；当前未登录且未检测到 FFmpeg |
+| QQ 动态 | 有效空间 Cookie 与 OneBot 能力 | 模块运行，但业务未就绪；未执行发布、评论或点赞 |
+| QQ 资料 | OneBot v11 aiocqhttp，管理员权限 | 菜单和配置可进入；未修改真实 QQ 资料 |
 
-## 配置、数据与记忆
-
-- 每个功能菜单的「配置」视图读取生成的 schema 并直接修改知伴配置；敏感值只显示是否已配置，留空保持原值，清除需显式操作；保存使用配置版本校验，冲突时要求重新读取，重载后应用。
-- 旧插件 JSON 配置只在知伴首次迁移时导入，不会覆盖已存在的新设置；迁移结果单独记录，保留后续用户主动清空的值。
-- 聊天、表情、图片、语音、音乐、主动问候、历史、空间和 QQ 资料沿用原 plugin_data 目录；QQ 资料头像保存在 astrbot_plugin_qqprofile 的 avatar 子目录。
-- LivingMemory 复用原有 `data/plugin_data/astrbot_plugin_livingmemory/` 数据目录，不搬动数据库、不重建索引。原 AngelMemory 数据不导入，仍保留在旧目录供回退。独立 LivingMemory 插件必须先停用，避免双实例同时写入。
-- 人格审批数据库仍位于 `data/plugin_data/astrbot_plugin_zhiban/memory/persona.sqlite3`，与 LivingMemory 记忆库分开。
-- 生图供应商文件与其他私有凭据不进入源码仓库。
-- 可在 AstrBot 配置提供商中添加 OpenAI 兼容接口，再选择 BAAI/bge-m3 嵌入与 BAAI/bge-reranker-v2-m3 重排序。账户额度和认证由服务商决定。
-- 查询和候选记忆会发送至所配置的云端嵌入／重排序服务。服务失败时退回本地关键词检索，不切换收费模型。
-- 长期事实不按固定 180 天删除；相关性衰减只影响召回排序。临时事项可以过期。人格建议仅在管理员批准后生效，并支持回滚。
-
-## 调度与资源
-
-- 聊天同一时间执行 1 条；全局等待最多 20 条、单会话最多 4 条、最长等待 90 秒。
-- 记忆提取设置每日上限；媒体重处理默认串行。知伴核心统一准入聊天流水线并串行化媒体操作；主动问候、QQ 空间和其他上游业务定时任务继续使用各自的调度逻辑，并由 ModuleHost 统一启停和清理。
-- 表情语义索引和自动采集沿用服务器当前的关闭状态。
-- 新默认设置关闭主动插件的 Web 管理服务、遥测和通知轮询；聊天主动问候仍沿用私聊开启、群聊关闭的旧设置。
-- QQ 空间可能启动独立 Python 进程；一个插件包不代表单进程或零内存增量。调度器不限制其他第三方插件独立发出的模型请求。
+以下项目仍需单独验收：真实 QQ 空间读写、真实 OneBot 收发、管理员资料修改、媒体上传、Linux QQ / SnowLuma 适配，以及完整生产服务器资源峰值。未执行的外部副作用不会用页面可打开或单元测试通过来代替。
 
 ## 命令
 
-- /知伴 菜单：显示按使用频率预设的模块菜单。
-- /知伴 状态：显示模块、队列和错误状态。
-- /知伴 人格建议：列出当前会话待审批建议。
-- /知伴 批准 编号、/知伴 拒绝 编号：管理员审批建议。
-- /知伴 回滚：恢复当前会话上一人格版本。
+- `/知伴 菜单`：显示按预设使用频率排列的模块菜单。
+- `/知伴 状态`：显示调度器、模块生命周期和错误状态。
+- `/知伴 人格建议`：列出当前会话待审批建议。
+- `/知伴 批准 编号`、`/知伴 拒绝 编号`：管理员审批建议。
+- `/知伴 回滚`：恢复当前会话上一人格版本。
 
-人格审批使用 AstrBot event.is_admin() 验权。其他模块命令与工具继续采用原名称。
+各上游模块原有的命令和工具继续可用。
 
-## 验证状态
+## 开发模式
 
-- 本地回归：2026-11-14 Python 测试 98 项通过、19 个子测试通过，Node 测试 17 项通过；另外 node --check 与 git diff --check 通过。覆盖注册表重载、配置保存与密钥脱敏、旧配置迁移、路由桥接、上游资源一致性、队列、记忆隔离和媒体限制。
-- 所有 Python 文件通过 AST 解析；源码扫描未发现密钥或令牌。
-- Windows 本机 AstrBot 4.29.3：0.2.0 已同步并重载，11 个集成模块均报告运行中。聊天系统与 QQ 社交组合概览卡、真实模块 Logo、配置入口、QQ 资料表单以及集成模块页的上游样式均已检查；表情包管理资源包列表加载成功，未再出现“未找到该路由”。保存/应用控件、密钥脱敏也已检查，未改动配置。QQ 空间自动绑定未从 OneBot 获得可用 Cookie，实际空间读写和状态/签名修改命令未执行；OneBot 实际收发与远端 Linux 环境仍需分别验收。
-- Ubuntu、SnowLuma、Linux QQ 与 2 GB 全栈尚未端到端验证。
-- 60 MiB 插件增量和 2 GB 可用性均为工程目标，不是实测结论。
-- 不承诺 QQ 账号零风控或零封禁风险。
+开发模式为“保留上游实现，在知伴宿主内完成生命周期、配置、状态和界面适配”，不重写业务逻辑，也不把不同模块的持久化数据强行合并。
 
-## 来源与许可
+主要分工：
 
-QQ 资料管理模块来自本机 AstrBot 已安装的 Zhalslar/astrbot_plugin_qqprofile v1.1.6 快照，随包附 AGPL v3 许可；当前已将其配置导入和头像数据目录纳入知伴。
+- `main.py`：AstrBot 插件入口、Web API、全局设置与聊天准入。
+- `runtime.py`：模块生命周期、冲突检查、资源清理和状态。
+- `catalog.py`：十个模块及五个一级分组的元数据。
+- `settings_service.py`：配置版本、校验、密钥脱敏与冲突保护。
+- `views/知伴/app.js`：五入口应用、总览、全局设置和配置工作台。
+- `views/知伴/module_bridge.js`：上游页面侧栏、主题适配和受控 API 代理。
+- `build_views.py`：生成上游页面资源、注入桥接资源并写入受控适配清单。
+- `package_release.py`：生成 ZIP、逐文件哈希清单和发布 SHA-256。
 
-知伴包含九个原服务器非记忆模块、一个本机已安装的 QQ 资料管理模块与 LivingMemory，共十一个运行模块；聊天互动、主动问候、历史查询和内容过滤归为聊天系统，QQ 动态和资料管理归为 QQ 社交，底层开关仍可分别控制。旧 AngelMemory 源码仍在仓库中供回退参考，但不注册、不进入发布 ZIP。各模块保留在独立目录，尽量保留元数据、版权声明、许可证和必要资源。上游地址来自模块 `metadata.yaml`，不是已核实的精确来源提交；`upstream/source-manifest.json` 记录旧服务器快照文件校验值，不含上游 commit。
+资源审计规则：生成目录中的非 HTML 上游资源必须与对应源文件逐字节一致；所有 index HTML 的适配都由 `prepare_module_ui_html` 统一注入；主题覆盖只在 `module_bridge.js` 的明确选择器范围内生效。`.zhiban_generated_assets.json` 记录生成文件和适配策略，并随发布包提供。
 
-| 模块（快照版本） | metadata.yaml 中记录的上游 | 随附许可与注意事项 |
-| --- | --- | --- |
-| 天使之心（2.2.13） | `kawayiYokami/astrbot_plugin_angel_heart` | AGPL v3，见模块 `LICENSE` |
-| LivingMemory（2.8.2） | `lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory` | AGPL v3，见 `LICENSE`；前端依赖另有许可文件 |
-| 表情包管理器（5.3.5） | `anka-afk/astrbot_plugin_meme_manager` | MIT，见模块 `LICENSE` |
-| Breeze TTS（1.3.1） | `hangdingding/AstrBot-breezetts` | 未发现 LICENSE/COPYING/NOTICE；授权待核实 |
-| 主动消息（v1.3.0-beta.1） | `Pancakes-Labs/astrbot_plugin_proactive_chat` | AGPL v3，见模块 `LICENSE` |
-| 天使画笔（0.2.2） | `kawayiYokami/astrbot_plugin_angel_brush` | 未发现 LICENSE/COPYING/NOTICE；授权待核实 |
-| 我想听歌（0.1.3） | `57Darling02/astrbot_plugin_listen_music` | 未发现 LICENSE/COPYING/NOTICE；授权待核实 |
-| 天使之眼（1.0.10） | `kawayiYokami/astrbot_plugin_angel_eye` | LICENSE 为 AGPL v3，但原 README 写 GPL-3.0；许可说明冲突，待上游澄清 |
-| QQ 空间 Ultra（0.9.0） | `diaomin66/astrbot_plugin_qzone_ultra` | MIT，见模块 `LICENSE`；随包普惠体字体没有许可文本 |
-| 链接过滤（1.0.0） | metadata 为 `https://example.local/link_filter` | repo 是占位地址；未发现 LICENSE/COPYING/NOTICE，来源和授权均待核实 |
-| AngelMemory（2.0.4，旧源码） | `kawayiYokami/astrbot_plugin_angel_memory` | GPL v3，见模块 `LICENSE`；不进入运行模块与发布 ZIP |
+### 本地开发
 
-许可证文件未随附不等于获得授权，“私有部署与测试”也不能替代授权。当前 ZIP 仅用于项目所有者本地验证和既有服务器部署；打包成功不构成公开再分发许可，也不代表不同 AGPL/GPL 模块和整合适配代码之间的许可证兼容性已获确认。公开分发前需核实缺失许可模块的授权、AngelEye 的许可冲突、QQ 空间字体许可、实际上游版本/提交，以及各模块 AGPL/GPL 条款（含网络交互条款）的适用要求。本段是随附文件审计，不是法律意见。
+使用 Python 3.12、AstrBot 4.29.3 和仓库开发依赖：
 
-服务器代码基线取自 2026-11-13 快照；部署前再次确认线上配置与补丁。
-
-## 项目结构
-
-```text
-astrbot_plugin_zhiban/
-  main.py                 AstrBot 插件入口与侧栏应用注册
-  runtime.py              子模块生命周期、配置代理和冲突保护
-  catalog.py              功能模块清单与默认菜单顺序
-  legacy_config.py        旧插件配置导入
-  scheduling.py           并发与队列调度限制
-  memory_control.py       记忆隔离与人格审批控制
-  _conf_schema.json       知伴配置页 schema
-  logo.png                知伴侧栏图标
-  ui_assets.py            页面资源映射与路径校验
-  views/                  知伴应用页面
-  modules/                按上游插件 ID 隔离的模块源码、资源和许可
-  requirements.txt        合并后的 Python 依赖
-tests/                    知伴适配、配置、页面及调度测试
-build_schema.py           汇总模块配置 schema
-package_release.py         构建发布 ZIP 和 SHA-256 清单
-```
-
-## 开发与测试
-
-开发模式为“保留上游实现、在知伴宿主内适配生命周期与配置”，不把所有业务重写成新的单体实现。使用 Python 3.12、AstrBot 4.29.3 和仓库测试依赖；从仓库根目录执行：
-
-```powershell
+~~~~powershell
 python build_schema.py
 python build_views.py
 python -m pytest tests -q
 node --test tests/*.mjs
 python package_release.py
-```
+~~~~
 
-测试主要验证本地适配与回归，不代表所有第三方服务、OneBot 桥接器或 Linux 目标环境均已端到端验收。
+AI 辅助开发使用 GPT-6 Astra。涉及运行行为、配置结构或接口语义的变化递增 `metadata.yaml` 版本；小版本本地累积，重大版本验收后统一推送私有 GitHub 仓库。
 
-## 开发与发布
+## 验证记录
 
-- AI 辅助开发模型：GPT-6 Astra。
-- 小版本改动先本地实现和验证，重大版本验收后统一推送到 GitHub 私有仓库。
-- 开发模式：尽量复用上游业务实现，由知伴统一承载模块生命周期、菜单和配置代理；页面及协议适配独立维护。
+2026-11-14，知伴 0.3.0：
+
+- Python：103 项测试通过，另有 18 个子测试通过。
+- Node：17 项测试通过。
+- Python AST 解析、`node --check`、页面资源一致性、发布清单和 SHA-256 校验通过。
+- Windows 本机 AstrBot 4.29.3 已加载十个模块；登录态页面可打开总览、全局设置和十个模块入口。
+- 浅绿色主题、五个一级入口、配置搜索、无修改保存反馈、QQ 动态未就绪提示已在真实页面检查。
+- 1024、768、390 像素布局已检查；1440 附近默认布局已检查。
+- 未修改真实 LLM、图片、语音、音乐或 QQ 资料配置；未发布、评论、点赞或向真实联系人发送消息。
+
+## 来源与许可
+
+知伴注册十个运行模块：聊天互动、LivingMemory、表情互动、语音回复、主动问候、图片创作、音乐点播、历史查询、QQ 动态和 QQ 资料。聊天互动、主动问候和历史查询归入“聊天系统”；QQ 动态和 QQ 资料归入“QQ 社交”。
+
+| 模块（快照版本） | 上游地址（以 metadata.yaml 为准） | 随附许可与备注 |
+| --- | --- | --- |
+| 天使之心（2.2.13） | `kawayiYokami/astrbot_plugin_angel_heart` | AGPL v3，见模块 `LICENSE` |
+| LivingMemory（2.8.2） | `lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory` | AGPL v3；前端依赖另有许可文件 |
+| 表情包管理器（5.3.5） | `anka-afk/astrbot_plugin_meme_manager` | MIT，见模块 `LICENSE` |
+| Breeze TTS（1.3.1） | `hangdingding/AstrBot-breezetts` | 未发现 LICENSE/COPYING/NOTICE，授权待核实 |
+| 主动消息（v1.3.0-beta.1） | `Pancakes-Labs/astrbot_plugin_proactive_chat` | AGPL v3，见模块 `LICENSE` |
+| 天使画笔（0.2.2） | `kawayiYokami/astrbot_plugin_angel_brush` | 未发现 LICENSE/COPYING/NOTICE，授权待核实 |
+| 我想听歌（0.1.3） | `57Darling02/astrbot_plugin_listen_music` | 未发现 LICENSE/COPYING/NOTICE，授权待核实 |
+| 天使之眼（1.0.10） | `kawayiYokami/astrbot_plugin_angel_eye` | LICENSE 为 AGPL v3，README 曾写 GPL-3.0，待上游澄清 |
+| QQ 空间 Ultra（0.9.0） | `diaomin66/astrbot_plugin_qzone_ultra` | MIT；随包普惠体字体没有许可文本 |
+| QQ 资料（1.1.6） | `Zhalslar/astrbot_plugin_qqprofile` | AGPL v3，见模块 `LICENSE` |
+
+源码基线取自 2026-11-13 的服务器快照；`upstream/source-manifest.json` 记录纳入文件及校验值，不包含未核实的上游 commit。许可证文件缺失或相互冲突的模块不得据此推定已获公开再分发授权；私有部署和打包成功不等于许可审计完成。
+
+## 项目结构
+
+~~~~text
+astrbot_plugin_zhiban/
+  main.py                  插件入口、Web API、全局设置、聊天准入
+  runtime.py               模块加载、重载、冲突与资源清理
+  catalog.py               十模块和五入口元数据
+  settings_service.py      配置保存、版本、校验与脱敏
+  scheduling.py            队列、超时与媒体串行
+  memory_control.py        人格建议审批与控制
+  ui_assets.py             页面资源解析与安全路径
+  views/知伴/              侧栏应用、主题、工作台和桥接
+  modules/                 十个运行模块的源码、资源和许可
+  _conf_schema.json        知伴及模块配置 schema
+  metadata.yaml            插件版本、平台与 AstrBot 兼容范围
+tests/                     配置、生命周期、桥接、资源与调度测试
+build_views.py             生成模块资源和适配清单
+build_schema.py            汇总上游配置 schema
+package_release.py         生成发布 ZIP、哈希和清单
+~~~~

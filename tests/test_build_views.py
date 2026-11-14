@@ -44,22 +44,54 @@ class BuildViewsTests(unittest.TestCase):
                     (plugin_root / "views" / "知伴" / "modules" / module / "index.html").is_file()
                 )
 
-        for module in ("proactive", "eye", "filter", "qqprofile"):
+        for module in ("proactive", "eye", "qqprofile"):
             with self.subTest(message_pipeline_module=module):
                 entry = next(line for line in app_source.splitlines() if f'key: "{module}"' in line)
                 self.assertIn("help:", entry)
                 self.assertNotIn("page:", entry)
 
-    def test_chat_and_qq_features_share_coherent_app_groups(self):
+    def test_five_primary_groups_keep_all_ten_modules_reachable(self):
         app_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "app.js").read_text(encoding="utf-8")
-        for module in ("heart", "proactive", "eye", "filter"):
+        index_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "index.html").read_text(encoding="utf-8")
+        self.assertEqual(len(build_views_module.MODULES), 10)
+        self.assertNotIn("filter", {item["key"] for item in build_views_module.MODULES})
+        expected_groups = {
+            "overview": "总览",
+            "chat": "聊天系统",
+            "memory": "记忆成长",
+            "creative": "表达创作",
+            "social": "QQ 社交",
+        }
+        for key, label in expected_groups.items():
+            self.assertRegex(app_source, rf'\{{ key: "{key}", label: "{label}"')
+        for module, group, group_key in (
+            ("heart", "聊天系统", "chat"),
+            ("proactive", "聊天系统", "chat"),
+            ("eye", "聊天系统", "chat"),
+            ("memory", "记忆成长", "memory"),
+            ("meme", "表达创作", "creative"),
+            ("tts", "表达创作", "creative"),
+            ("brush", "表达创作", "creative"),
+            ("music", "表达创作", "creative"),
+            ("qzone", "QQ 社交", "social"),
+            ("qqprofile", "QQ 社交", "social"),
+        ):
             entry = next(line for line in app_source.splitlines() if f'key: "{module}"' in line)
-            self.assertIn('group: "聊天系统"', entry)
-        for module in ("qzone", "qqprofile"):
-            entry = next(line for line in app_source.splitlines() if f'key: "{module}"' in line)
-            self.assertIn('group: "QQ 社交"', entry)
-        self.assertIn("renderRelatedModules", app_source)
-        self.assertIn("nav-logo", app_source)
+            self.assertIn(f'group: "{group}"', entry)
+            self.assertIn(f'groupKey: "{group_key}"', entry)
+        self.assertIn("renderGlobalOverview", app_source)
+        self.assertIn("renderGlobalSettings", app_source)
+        self.assertIn("ui/global", app_source)
+        self.assertIn("window.location.replace(new URL(`modules/${item.page}/index.html`", app_source)
+        bridge_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "module_bridge.js").read_text(encoding="utf-8")
+        self.assertIn("zhiban-shell-style", bridge_source)
+        self.assertIn("配置当前模块", bridge_source)
+        self.assertIn("qzone", bridge_source)
+        self.assertIn("window.location.replace(target.href)", bridge_source)
+        self.assertIn('id="primaryNav"', index_source)
+        self.assertNotIn('data-page="system"', index_source)
+        self.assertNotIn('key: "filter"', app_source)
+        self.assertFalse((Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "logos" / "filter.svg").exists())
 
     def test_qq_profile_source_keeps_status_signature_and_license(self):
         root = Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "modules" / "astrbot_plugin_qqprofile"
@@ -106,6 +138,21 @@ class BuildViewsTests(unittest.TestCase):
                 if path.is_file()
             }
             self.assertEqual(generated_paths, expected_paths)
+
+    def test_generated_manifest_records_controlled_adaptations(self):
+        plugin_root = Path(__file__).parents[1] / "astrbot_plugin_zhiban"
+        with tempfile.TemporaryDirectory() as temp:
+            view_root = Path(temp) / "views" / "知伴"
+            result = build_views_module.build_views(plugin_root, view_root=view_root)
+            manifest = __import__("json").loads((view_root / ".zhiban_generated_assets.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["schema_version"], 2)
+            self.assertEqual(len(manifest["generated_files"]), result["files"])
+            self.assertTrue(manifest["adaptations"]["unchanged_non_html_assets"])
+            self.assertEqual(manifest["adaptations"]["mode"], "authenticated SDK and module bridge injection")
+            for path in manifest["generated_files"]:
+                if path.endswith("/index.html"):
+                    page = (view_root / "modules" / path).read_text(encoding="utf-8")
+                    self.assertIn("module_bridge.js", page)
 
     def test_materializes_selected_page_with_sdk_adapter_before_app_scripts(self):
         with tempfile.TemporaryDirectory() as temp:

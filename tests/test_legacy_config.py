@@ -397,8 +397,8 @@ def test_old_angel_migration_record_does_not_block_livingmemory_conversion(tmp_p
 def test_sidecar_write_failure_rolls_back_parent_and_preserves_old_record(tmp_path, monkeypatch, failure_point):
     write_legacy(tmp_path, "heart", {"analyzer_model": "legacy-chat"})
     state_path = tmp_path / legacy_config._MIGRATION_STATE_NAME
-    old_state = {"version": 1, "modules": {"filter": {
-        "source": "astrbot_plugin_link_filter_config.json", "outcome": "preserved",
+    old_state = {"version": 1, "modules": {"meme": {
+        "source": "astrbot_plugin_meme_manager_config.json", "outcome": "preserved",
     }}}
     state_path.write_text(json.dumps(old_state), encoding="utf-8")
     old_bytes = state_path.read_bytes()

@@ -10,7 +10,6 @@
     music: "astrbot_plugin_listen_music",
     eye: "astrbot_plugin_angel_eye",
     qzone: "astrbot_plugin_qzone_ultra",
-    filter: "astrbot_plugin_link_filter",
     qqprofile: "astrbot_plugin_qqprofile",
   };
   const frames = new Map();

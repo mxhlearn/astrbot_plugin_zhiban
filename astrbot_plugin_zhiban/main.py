@@ -21,6 +21,7 @@ from .settings_service import (
     SettingsConflictError,
     SettingsValidationError,
     apply_module_patch,
+    config_revision,
     read_module_config,
 )
 
@@ -73,6 +74,12 @@ class ZhibanPlugin(Star):
             "知伴应用的模块运行状态",
         )
         register(
+            "/astrbot_plugin_zhiban/ui/global",
+            self._ui_global_config,
+            ["GET", "POST"],
+            "读取或保存知伴跨模块调度与全局资源设置",
+        )
+        register(
             "/astrbot_plugin_zhiban/ui/config/<module>",
             self._ui_config,
             ["GET", "POST"],
@@ -97,6 +104,226 @@ class ZhibanPlugin(Star):
             "知伴应用内置模块页面资源",
         )
 
+    def _global_config_payload(self) -> dict:
+        management_schema = self._config_schema.get("management", {})
+        if not isinstance(management_schema, dict):
+            management_schema = {"type": "object", "items": {}}
+        section = self.config.get("management", {})
+        if not isinstance(section, dict):
+            section = {}
+        snapshot = read_module_config(
+            {"type": "object", "items": {"settings": management_schema}},
+            {"enabled": True, "settings": section},
+        )
+        status_map = {item["key"]: item for item in self.host.status()} if self.host else {}
+        module_rows = []
+        for spec in MODULES:
+            configured = self.config.get(spec["key"], {})
+            if not isinstance(configured, dict):
+                configured = {}
+            state = status_map.get(spec["key"], {})
+            module_rows.append({
+                "key": spec["key"],
+                "label": spec["label"],
+                "group": spec.get("group", ""),
+                "enabled": bool(configured.get("enabled", True)),
+                "revision": config_revision(configured),
+                "state": state.get("state", "starting"),
+                "running": bool(state.get("running", False)),
+                "readiness": state.get("readiness"),
+            })
+        return {
+            "settings": snapshot["settings"],
+            "schema": management_schema,
+            "revision": snapshot["revision"],
+            "scheduler": self.scheduler.status(),
+            "modules": module_rows,
+        }
+
+    async def _ui_global_config(self):
+        if not self._dashboard_session_authorized():
+            return JSONResponse({"status": "error", "message": "未授权"}, status_code=401)
+        if request.method.upper() == "GET":
+            payload = self._global_config_payload()
+            status_data = await self._ui_status()
+            module_states = status_data.get("data", {}).get("modules", [])
+            readiness = {item["key"]: item.get("readiness") for item in module_states}
+            for module in payload["modules"]:
+                module["readiness"] = readiness.get(module["key"])
+            return JSONResponse({"status": "ok", "data": payload})
+
+        body = await request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return JSONResponse({"status": "error", "message": "请求格式无效"}, status_code=400)
+        revision = body.get("revision")
+        changes = body.get("changes", {})
+        module_updates = body.get("modules", {})
+        apply_changes = bool(body.get("apply"))
+        if not isinstance(revision, str) or not isinstance(changes, dict) or not isinstance(module_updates, dict):
+            return JSONResponse({"status": "error", "message": "全局配置格式无效"}, status_code=400)
+
+        management_schema = self._config_schema.get("management", {})
+        wrapper_schema = {"type": "object", "items": {"settings": management_schema}}
+        current_management = self.config.get("management", {})
+        if not isinstance(current_management, dict):
+            current_management = {}
+        current_wrapper = {"enabled": True, "settings": current_management}
+        if changes:
+            try:
+                updated_wrapper = apply_module_patch(
+                    wrapper_schema,
+                    current_wrapper,
+                    expected_revision=revision,
+                    changes=changes,
+                )
+            except SettingsConflictError as exc:
+                return JSONResponse({"status": "conflict", "message": str(exc)}, status_code=409)
+            except SettingsValidationError as exc:
+                return JSONResponse({"status": "error", "message": str(exc)}, status_code=422)
+        else:
+            if revision != config_revision(current_wrapper):
+                return JSONResponse(
+                    {"status": "conflict", "message": "全局配置已被其他操作更新，请重新载入后再保存"},
+                    status_code=409,
+                )
+            updated_wrapper = current_wrapper
+
+        pending = {}
+        for key, update in module_updates.items():
+            spec = next((item for item in MODULES if item["key"] == key), None)
+            if spec is None or not isinstance(update, dict):
+                return JSONResponse({"status": "error", "message": f"模块更新无效：{key}"}, status_code=422)
+            enabled = update.get("enabled")
+            module_revision = update.get("revision")
+            if not isinstance(enabled, bool) or not isinstance(module_revision, str):
+                return JSONResponse({"status": "error", "message": f"模块更新缺少版本号：{key}"}, status_code=422)
+            section = self.config.get(key, {})
+            if not isinstance(section, dict):
+                section = {}
+            try:
+                pending[key] = apply_module_patch(
+                    self._module_schema(key) or {},
+                    section,
+                    expected_revision=module_revision,
+                    changes={},
+                    enabled=enabled,
+                )
+            except SettingsConflictError as exc:
+                return JSONResponse({"status": "conflict", "message": f"{spec['label']}：{exc}"}, status_code=409)
+            except SettingsValidationError as exc:
+                return JSONResponse({"status": "error", "message": str(exc)}, status_code=422)
+
+        previous_management = copy.deepcopy(current_management)
+        previous_modules = {key: copy.deepcopy(self.config.get(key, {})) for key in pending}
+        try:
+            self.config["management"] = updated_wrapper.get("settings", {})
+            for key, updated in pending.items():
+                self.config[key] = updated
+            save_async = getattr(self.config, "save_config_async", None)
+            if callable(save_async):
+                saved = await save_async()
+                if saved is False:
+                    raise RuntimeError("配置保存被较新的设置覆盖")
+            else:
+                save = getattr(self.config, "save_config", None)
+                if not callable(save):
+                    raise RuntimeError("配置存储不支持保存")
+                save()
+        except Exception:
+            self.config["management"] = previous_management
+            for key, previous in previous_modules.items():
+                self.config[key] = previous
+            self.logger.exception("知伴全局配置保存失败")
+            return JSONResponse({"status": "error", "message": "全局配置保存失败，请检查 AstrBot 日志"}, status_code=500)
+
+        management = self.config.get("management", {})
+        self.scheduler.queue_limit = max(1, min(100, int(management.get("queue_limit", 20))))
+        self.scheduler.session_limit = max(1, min(10, int(management.get("session_queue_limit", 4))))
+        self.scheduler.wait_seconds = max(1, min(600, float(management.get("wait_seconds", 90))))
+
+        failures = []
+        applied = []
+        if apply_changes and self.host is not None:
+            for key in pending:
+                try:
+                    statuses = await self.host.reload_module(key)
+                    state = next((item for item in statuses if item["key"] == key), None)
+                    if state and state.get("state") in {"failed", "blocked"}:
+                        failures.append({"key": key, "message": state.get("error") or "模块启动失败"})
+                    else:
+                        applied.append(key)
+                except Exception as exc:
+                    failures.append({"key": key, "message": str(exc) or type(exc).__name__})
+
+        payload = self._global_config_payload()
+        return JSONResponse({
+            "status": "partial" if failures else "ok",
+            "message": "部分模块应用失败" if failures else "全局设置已保存并应用",
+            "data": {**payload, "applied_modules": applied, "failures": failures},
+        }, status_code=207 if failures else 200)
+
+    async def _module_readiness(self, module: dict) -> dict:
+        """Return lifecycle-independent business readiness with honest unknowns."""
+        key = module.get("key")
+        state = module.get("state")
+        if not module.get("enabled", True):
+            return {"state": "disabled", "label": "已关闭", "detail": "模块开关当前关闭"}
+        if state in {"failed", "blocked"}:
+            return {
+                "state": "failed",
+                "label": "不可用",
+                "detail": module.get("error") or "模块启动失败",
+            }
+        if state in {None, "starting", "stopping", "stopped"}:
+            return {"state": "starting", "label": "初始化中", "detail": "模块尚未完成启动"}
+        if state != "running" or self.host is None:
+            return {"state": "unknown", "label": "未检测", "detail": "没有可用的运行实例"}
+
+        instance = self.host.instances.get(key)
+        if key == "memory":
+            initializer = getattr(instance, "initializer", None)
+            if getattr(initializer, "is_failed", False):
+                return {"state": "failed", "label": "不可用", "detail": "记忆组件初始化失败"}
+            if not getattr(initializer, "is_initialized", False):
+                return {"state": "starting", "label": "初始化中", "detail": "记忆组件尚未就绪"}
+
+        if key == "qzone":
+            controller = getattr(instance, "controller", None)
+            get_status = getattr(controller, "get_status", None)
+            if not callable(get_status):
+                return {"state": "unknown", "label": "未检测", "detail": "空间连接状态接口不可用"}
+            try:
+                status = await asyncio.wait_for(
+                    get_status(probe_daemon=False),
+                    timeout=1.5,
+                )
+            except Exception as exc:
+                return {
+                    "state": "unknown",
+                    "label": "检测失败",
+                    "detail": f"未取得空间连接状态：{type(exc).__name__}",
+                }
+            try:
+                cookie_count = int(status.get("cookie_count") or 0) if isinstance(status, dict) else 0
+            except (TypeError, ValueError):
+                cookie_count = 0
+            needs_rebind = bool(status.get("needs_rebind")) if isinstance(status, dict) else True
+            if not cookie_count or needs_rebind:
+                return {
+                    "state": "not_ready",
+                    "label": "待配置",
+                    "detail": "没有可用空间 Cookie，动态功能尚未就绪",
+                }
+            daemon_state = str(status.get("daemon_state") or "")
+            if daemon_state and daemon_state not in {"ready", "running"}:
+                return {
+                    "state": "not_ready",
+                    "label": "待连接",
+                    "detail": f"空间守护进程状态：{daemon_state}",
+                }
+
+        return {"state": "ready", "label": "业务可用", "detail": "模块已运行并完成启动检查"}
+
     async def _ui_status(self):
         modules = self.host.status() if self.host else []
         menu_order = self.config.get("management", {}).get("menu_order", [])
@@ -110,11 +337,14 @@ class ZhibanPlugin(Star):
             elif not getattr(initializer, "is_initialized", False):
                 memory_state["state"] = "starting"
                 memory_state["detail"] = "正在等待记忆组件与模型提供商初始化"
+        for module in modules:
+            module["readiness"] = await self._module_readiness(module)
         return {
             "status": "ok",
             "data": {
                 "modules": modules,
                 "menu_order": [item["key"] for item in ordered_modules(menu_order)],
+                "scheduler": self.scheduler.status(),
             },
         }
 
