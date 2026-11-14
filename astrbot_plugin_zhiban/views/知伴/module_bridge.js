@@ -86,7 +86,7 @@
     #zhiban-module-nav .zb-primary-icon { display:grid;width:20px;height:20px;flex:0 0 20px;place-items:center;border:1.5px solid currentColor;border-radius:6px;font-size:9px;line-height:1; }
     #zhiban-module-nav .zb-section-label { margin:19px 10px 7px;color:var(--zb-muted);font-size:10px;font-weight:600; }
     #zhiban-module-nav .zb-module { min-height:38px;padding:7px 10px;font-size:13px; }
-    #zhiban-module-nav .zb-module-mark { display:grid;width:24px;height:24px;flex:0 0 24px;place-items:center;border:1px solid var(--zb-line);border-radius:7px;background:var(--zb-white);color:var(--zb-green);font-size:10px;font-weight:650; }
+    #zhiban-module-nav .zb-module-mark { display:grid;width:26px;height:26px;flex:0 0 26px;place-items:center;overflow:hidden;border:1px solid var(--zb-line);border-radius:7px;background:var(--zb-white);color:var(--zb-green);font-size:10px;font-weight:650; }#zhiban-module-nav .zb-module-mark img { display:block;width:22px;height:22px;object-fit:contain;border-radius:5px; }
     #zhiban-module-nav .zb-state { width:7px;height:7px;margin-left:auto;border-radius:50%;background:var(--zb-muted); }
     #zhiban-module-nav .zb-state.running { background:#2f8b58;box-shadow:0 0 0 3px rgba(47,139,88,.12); }
     #zhiban-module-nav .zb-state.not_ready,#zhiban-module-nav .zb-state.unknown { background:#b47a20;box-shadow:0 0 0 3px rgba(180,122,32,.12); }
@@ -278,7 +278,15 @@
       link.setAttribute('aria-current', item.key === moduleKey ? 'page' : 'false');
       const mark = document.createElement('span');
       mark.className = 'zb-module-mark';
-      mark.textContent = item.label.slice(0, 1);
+      const markImage = document.createElement('img');
+      markImage.src = new URL('logos/' + item.logo, viewRoot).href;
+      markImage.alt = '';
+      markImage.setAttribute('aria-hidden', 'true');
+      markImage.addEventListener('error', () => {
+        markImage.remove();
+        mark.textContent = item.label.slice(0, 1);
+      }, { once: true });
+      mark.append(markImage);
       const label = document.createElement('span');
       label.textContent = item.label;
       const state = document.createElement('span');

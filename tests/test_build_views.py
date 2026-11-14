@@ -99,6 +99,30 @@ class BuildViewsTests(unittest.TestCase):
         self.assertNotIn('key: "filter"', app_source)
         self.assertFalse((Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "logos" / "filter.svg").exists())
 
+    def test_readmes_document_models_and_integrated_upstreams(self):
+        root = Path(__file__).parents[1]
+        readmes = (
+            (root / "README.md").read_text(encoding="utf-8"),
+            (root / "astrbot_plugin_zhiban" / "README.md").read_text(encoding="utf-8"),
+        )
+        for source in readmes:
+            self.assertIn("GPT-6 Astra", source)
+            self.assertIn("DeepSeek V4.1 Flash", source)
+            self.assertIn("OneBot v11", source)
+            for repo in (
+                "astrbot_plugin_angel_heart",
+                "astrbot_plugin_livingmemory",
+                "astrbot_plugin_meme_manager",
+                "AstrBot-breezetts",
+                "astrbot_plugin_proactive_chat",
+                "astrbot_plugin_angel_brush",
+                "astrbot_plugin_listen_music",
+                "astrbot_plugin_angel_eye",
+                "astrbot_plugin_qzone_ultra",
+                "astrbot_plugin_qqprofile",
+            ):
+                self.assertIn(repo, source)
+
     def test_qq_profile_source_keeps_status_signature_and_license(self):
         root = Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "modules" / "astrbot_plugin_qqprofile"
         source = (root / "main.py").read_text(encoding="utf-8")
