@@ -54,15 +54,18 @@ const moduleStates = new Map();
 const pendingApply = new Set();
 let activeGroup = "overview";
 let activeKey = "heart";
-let activeFrame = null;
-let activeFrameDetach = null;
-let activeFrameReadyTimer = null;
 let activeView = "overview";
 let settingsRequest = 0;
 let statusPollTimer = null;
 let schedulerStatus = null;
 let settingsControlSequence = 0;
 let draftGuard = null;
+let navigationStarted = false;
+let statusRequestSequence = 0;
+let statusRequestInFlight = null;
+const STATUS_CACHE_KEY = "zhiban-status-cache-v1";
+const STATUS_CACHE_TTL_MS = 5000;
+const STATUS_CACHE_PREFIX = "zhiban-status:";
 
 function nextSettingsControlId() {
   settingsControlSequence += 1;
@@ -80,49 +83,73 @@ function syncTheme(context = window.AstrBotPluginView?.getContext?.()) {
 syncTheme();
 window.AstrBotPluginView?.onContext?.(syncTheme);
 
-function detachActiveFrame() {
-  if (activeFrameReadyTimer) {
-    clearTimeout(activeFrameReadyTimer);
-    activeFrameReadyTimer = null;
+function readStatusCache() {
+  let raw = null;
+  try { raw = sessionStorage.getItem(STATUS_CACHE_KEY); } catch { /* opaque sandbox origin */ }
+  if (!raw && window.name.startsWith(STATUS_CACHE_PREFIX)) raw = window.name.slice(STATUS_CACHE_PREFIX.length);
+  try {
+    const cached = JSON.parse(raw || "null");
+    if (!cached || Date.now() - Number(cached.savedAt || 0) > STATUS_CACHE_TTL_MS) return null;
+    if (!Array.isArray(cached.modules) || !Array.isArray(cached.menuOrder)) return null;
+    return cached;
+  } catch { return null; }
+}
+
+function writeStatusCache(data) {
+  const snapshot = {
+    savedAt: Date.now(),
+    modules: data.modules || [],
+    menuOrder: data.menu_order || [],
+    scheduler: data.scheduler || null,
+  };
+  const raw = JSON.stringify(snapshot);
+  try { sessionStorage.setItem(STATUS_CACHE_KEY, raw); } catch { /* opaque sandbox origin */ }
+  window.name = STATUS_CACHE_PREFIX + raw;
+}
+
+function canonicalTarget(href) {
+  const url = new URL(href, location.href);
+  const params = [...url.searchParams.entries()]
+    .filter(([key]) => !["asset_token", "theme"].includes(key))
+    .sort(([a], [b]) => a.localeCompare(b));
+  return url.origin + decodeURIComponent(url.pathname) + "?" + new URLSearchParams(params).toString();
+}
+
+function markNavigationPending(label) {
+  navigationStarted = true;
+  document.documentElement.dataset.navigating = "true";
+  status.textContent = label ? `正在打开${label}…` : "正在切换…";
+  status.className = "status starting";
+  configButton.disabled = true;
+}
+
+function navigatePage(href, label = "") {
+  if (navigationStarted) return false;
+  const target = new URL(href, location.href).href;
+  if (canonicalTarget(target) === canonicalTarget(location.href)) return false;
+  markNavigationPending(label);
+  window.location.replace(target);
+  return true;
+}
+
+function runViewUpdate(update) {
+  const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  if (typeof document.startViewTransition !== "function" || reduced) {
+    update();
+    return;
   }
-  if (typeof activeFrameDetach === "function") activeFrameDetach();
-  activeFrameDetach = null;
-  activeFrame = null;
+  const transition = document.startViewTransition(update);
+  rootDatasetTransition(transition);
 }
 
-function attachActiveFrame(frame, item) {
-  activeFrame = frame;
-  activeFrameDetach = window.ZhibanBridge?.attachFrame(frame, item.key, item.label) || null;
-  activeFrameReadyTimer = setTimeout(() => {
-    activeFrameReadyTimer = null;
-    if (activeFrame !== frame || frame.dataset.bridgeReady === "true") return;
-    detachActiveFrame();
-    renderFrameLoadFailure(item);
-  }, 12000);
+function rootDatasetTransition(transition) {
+  document.documentElement.dataset.viewTransition = "true";
+  const clear = () => { delete document.documentElement.dataset.viewTransition; };
+  transition.finished.then(clear, clear);
 }
-
-function renderFrameLoadFailure(item) {
-  const panel = document.createElement("article");
-  panel.className = "module-note failed";
-  const heading = document.createElement("h3");
-  heading.textContent = `${item.label}功能页没有完成加载`;
-  const copy = document.createElement("p");
-  copy.textContent = "模块页面未返回初始化信号。请重试；若仍失败，请检查该模块状态与静态资源路由。";
-  const actions = document.createElement("div");
-  actions.className = "overview-actions";
-  const retry = document.createElement("button");
-  retry.className = "settings-button primary";
-  retry.type = "button";
-  retry.textContent = "重试加载";
-  retry.addEventListener("click", () => renderActiveView());
-  const settings = document.createElement("button");
-  settings.className = "settings-button";
-  settings.type = "button";
-  settings.textContent = "打开配置";
-  settings.addEventListener("click", () => setView("settings"));
-  actions.append(retry, settings);
-  panel.append(heading, copy, actions);
-  workspace.replaceChildren(panel);
+function cleanupPageObservers() {
+  if (statusPollTimer) clearTimeout(statusPollTimer);
+  statusPollTimer = null;
 }
 
 function statusLabel(value) {
@@ -388,6 +415,7 @@ function renderGlobalOverview() {
 }
 
 function createModuleFrameElement(item) {
+  if (navigationStarted) return;
   const frame = document.createElement("iframe");
   frame.className = "module-frame";
   frame.title = `${item.label}工作台`;
@@ -396,7 +424,6 @@ function createModuleFrameElement(item) {
   const url = new URL(`modules/${item.page}/index.html`, document.baseURI);
   url.searchParams.set("embedded", "1");
   workspace.replaceChildren(frame);
-  attachActiveFrame(frame, item);
   frame.src = url.href;
   refresh.disabled = false;
 }
@@ -424,10 +451,9 @@ function renderProcessModule(item, state) {
 function renderWorkbench(item = moduleById(activeKey)) {
   const state = moduleStates.get(item.key);
   if (item.page && (!state || state.state === "running")) {
-    window.location.replace(new URL(`modules/${item.page}/index.html`, document.baseURI).href);
+    navigatePage(new URL(`modules/${item.page}/index.html`, document.baseURI).href, item.label);
     return;
   }
-  detachActiveFrame();
   settingsWorkspace.hidden = true;
   settingsWorkspace.replaceChildren();
   workspace.hidden = false;
@@ -956,7 +982,6 @@ function renderDedicatedSettings(item, config) {
 
 
 function renderGlobalSettingsLoading() {
-  detachActiveFrame();
   workspace.hidden = true;
   workspace.replaceChildren();
   settingsWorkspace.hidden = false;
@@ -1140,7 +1165,6 @@ async function saveSettings(item, config, changes, enabled, clearSecrets) {
 async function renderSettings(key, message = "") {
   const item = modules.find((entry) => entry.key === key) || modules[0];
   const requestId = ++settingsRequest;
-  detachActiveFrame();
   workspace.replaceChildren();
   workspace.hidden = true;
   settingsWorkspace.hidden = false;
@@ -1221,15 +1245,19 @@ function applyHeader() {
 }
 
 function setOverviewView(view) {
+  const nextView = view === "global" ? "global" : "overview";
+  if (activeGroup === "overview" && activeView === nextView) return;
   if (draftGuard && !draftGuard()) return;
   draftGuard = null;
-  activeGroup = "overview";
-  activeView = view === "global" ? "global" : "overview";
-  history.replaceState(null, "", `?group=overview&view=${activeView}`);
-  renderNavigation();
-  applyHeader();
-  renderActiveView();
-  scheduleStatusPoll();
+  runViewUpdate(() => {
+    activeGroup = "overview";
+    activeView = nextView;
+    history.replaceState(null, "", `?group=overview&view=${activeView}`);
+    renderNavigation();
+    applyHeader();
+    renderActiveView();
+    scheduleStatusPoll();
+  });
 }
 
 function openGroup(groupKey, key = "", view = "workbench") {
@@ -1255,12 +1283,17 @@ function openGroup(groupKey, key = "", view = "workbench") {
 }
 
 function selectGroup(groupKey) {
-  if (groupKey === "overview") setOverviewView("overview");
-  else openGroup(groupKey, "", "workbench");
+  if (groupKey === "overview") {
+    setOverviewView("overview");
+    return;
+  }
+  if (activeGroup === groupKey && activeView === "workbench") return;
+  openGroup(groupKey, "", "workbench");
 }
 
 function selectModule(key, updateUrl = true) {
   const item = modules.find((entry) => entry.key === key) || modules[0];
+  if (activeKey === item.key && activeView === "workbench") return;
   if (draftGuard && !draftGuard()) return;
   draftGuard = null;
   activeKey = item.key;
@@ -1283,13 +1316,13 @@ function selectModule(key, updateUrl = true) {
 
 function cancelPendingFrames() {
   settingsRequest += 1;
-  detachActiveFrame();
   settingsWorkspace.hidden = true;
   settingsWorkspace.replaceChildren();
   workspace.hidden = false;
 }
 
 function setView(view) {
+  if (view === activeView) return;
   if (draftGuard && !draftGuard()) return;
   draftGuard = null;
   if (view === "overview" || view === "global") {
@@ -1311,6 +1344,7 @@ function setView(view) {
 
 function renderActiveView() {
   cancelPendingFrames();
+  if (navigationStarted) return;
   if (activeView === "overview") {
     renderGlobalOverview();
     return;
@@ -1345,9 +1379,14 @@ function scheduleStatusPoll() {
 
 async function refreshStatus({ background = false } = {}) {
   if (document.visibilityState === "hidden") return;
+  if (statusRequestInFlight) return statusRequestInFlight;
+  const requestId = ++statusRequestSequence;
+  statusRequestInFlight = (async () => {
   try {
     const data = await callSettingsApi("GET", "ui/status");
+    if (requestId !== statusRequestSequence || document.visibilityState === "hidden") return;
     schedulerStatus = data.scheduler || null;
+    writeStatusCache(data);
     const previousStates = new Map(moduleStates);
     const previousOrder = modules.map((item) => item.key).join("|");
     const nextModules = orderModules(moduleCatalog, data.menu_order);
@@ -1381,7 +1420,11 @@ async function refreshStatus({ background = false } = {}) {
       workspace.replaceChildren(element("p", "empty-state error", "无法读取运行状态。请刷新页面或检查 Dashboard 登录态。"));
     }
     scheduleStatusPoll();
+  } finally {
+    statusRequestInFlight = null;
   }
+  })();
+  return statusRequestInFlight;
 }
 
 function updateSchedulerSummary(root = settingsWorkspace) {
@@ -1398,7 +1441,7 @@ refresh.addEventListener("click", () => {
   if (activeView === "overview") void refreshStatus();
   else if (activeView === "global") void renderGlobalSettings();
   else if (activeView === "settings") void renderSettings(activeKey);
-  else if (activeFrame) activeFrame.src = activeFrame.src;
+
   else void refreshStatus();
 });
 overviewTabs.addEventListener("click", (event) => {
@@ -1409,16 +1452,12 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     if (statusPollTimer) clearTimeout(statusPollTimer);
     statusPollTimer = null;
-    if (activeFrame) activeFrame.dataset.paused = "true";
   } else {
-    if (activeFrame) activeFrame.dataset.paused = "false";
     void refreshStatus({ background: true });
   }
 });
 window.addEventListener("pagehide", () => {
-  detachActiveFrame();
-  if (statusPollTimer) clearTimeout(statusPollTimer);
-  statusPollTimer = null;
+  cleanupPageObservers();
 });
 
 const initialParams = new URLSearchParams(location.search);
@@ -1433,6 +1472,13 @@ if (requestedGroup === "overview") {
   activeKey = initialItem.key;
   activeGroup = GROUPS.some((group) => group.key === requestedGroup) ? requestedGroup : initialItem.groupKey;
   activeView = requestedView === "settings" ? "settings" : "workbench";
+}
+const cachedStatus = readStatusCache();
+if (cachedStatus) {
+  modules = orderModules(moduleCatalog, cachedStatus.menuOrder);
+  moduleStates.clear();
+  for (const item of cachedStatus.modules) moduleStates.set(item.key, item);
+  schedulerStatus = cachedStatus.scheduler || null;
 }
 renderNavigation();
 applyHeader();

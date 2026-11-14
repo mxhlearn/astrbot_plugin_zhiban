@@ -33,8 +33,10 @@ class UiStatusTests(unittest.IsolatedAsyncioTestCase):
         class Controller:
             def __init__(self, cookie_count):
                 self.cookie_count = cookie_count
+                self.calls = 0
 
             async def get_status(self, probe_daemon=False):
+                self.calls += 1
                 return {"cookie_count": self.cookie_count, "needs_rebind": False, "daemon_state": "ready"}
 
         plugin = SimpleNamespace(host=SimpleNamespace(instances={"qzone": SimpleNamespace(controller=Controller(0))}))
@@ -44,8 +46,14 @@ class UiStatusTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(missing["state"], "not_ready")
         self.assertIn("Cookie", missing["detail"])
+        await ZhibanPlugin._module_readiness(
+            plugin,
+            {"key": "qzone", "enabled": True, "running": True, "state": "running"},
+        )
+        self.assertEqual(plugin.host.instances["qzone"].controller.calls, 1)
 
         plugin.host.instances["qzone"] = SimpleNamespace(controller=Controller(2))
+        plugin._readiness_cache.clear()
         ready = await ZhibanPlugin._module_readiness(
             plugin,
             {"key": "qzone", "enabled": True, "running": True, "state": "running"},

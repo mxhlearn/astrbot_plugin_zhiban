@@ -107,7 +107,17 @@
     }
     html[data-zhiban-shell="true"] .card.promo button,
     html[data-zhiban-shell="true"] .card.invite button { border-color:#dce6da!important;background:#fff!important;color:#2f6b4f!important; }
+    @media(prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation:none!important}html[data-navigating="true"] body::after{animation:none!important}}
     @media(max-width:1100px){html[data-zhiban-shell="true"] body{padding-left:0!important;padding-top:116px!important}#zhiban-module-nav{right:0;bottom:auto;width:auto;height:auto;min-height:0;padding:10px 12px;border-right:0;border-bottom:1px solid var(--zb-line)}#zhiban-module-nav .zb-brand{padding:0 4px 9px}#zhiban-module-nav .zb-brand img{width:32px;height:32px;flex-basis:32px}#zhiban-module-nav .zb-brand strong{font-size:17px}#zhiban-module-nav .zb-brand small,#zhiban-module-nav .zb-section-label,#zhiban-module-nav .zb-footer{display:none}#zhiban-module-nav .zb-primary{grid-template-columns:repeat(5,minmax(0,1fr));gap:3px}#zhiban-module-nav .zb-primary a{justify-content:center;min-height:38px;padding:6px 2px;font-size:10px;text-align:center}#zhiban-module-nav .zb-primary-icon{display:none}#zhiban-module-nav .zb-list{display:none}#zhiban-module-nav .zb-actions{position:absolute;top:14px;right:12px;margin:0}#zhiban-module-nav .zb-actions a{min-width:44px;min-height:28px;padding:3px 6px;font-size:10px}}
+    @media(max-width:600px){html[data-zhiban-shell="true"] body{padding-top:164px!important}#zhiban-module-nav .zb-primary{grid-template-columns:repeat(3,minmax(0,1fr))}#zhiban-module-nav .zb-primary a{font-size:10px;line-height:1.35}}
+    @view-transition { navigation: auto; }
+    ::view-transition-old(root) { animation: zb-module-out .12s ease both; }
+    ::view-transition-new(root) { animation: zb-module-in .16s ease both; }
+    @keyframes zb-module-out { to { opacity: .35; } }
+    @keyframes zb-module-in { from { opacity: .35; } to { opacity: 1; } }
+    html[data-navigating="true"] { cursor: progress; }
+    html[data-navigating="true"] body::after { position:fixed;top:0;left:0;z-index:2147483647;width:34%;height:2px;content:"";pointer-events:none;background:#2f6b4f;animation:zb-module-progress .75s ease-in-out infinite alternate; }
+    @keyframes zb-module-progress { from { transform:translateX(-20%); } to { transform:translateX(215%); } }
     html[data-zhiban-shell="true"] .n-button--primary-type,
     html[data-zhiban-shell="true"] .btn-primary,
     html[data-zhiban-shell="true"] .button-primary,
@@ -148,10 +158,80 @@
     return target ? destination(target) : shellUrl('overview', moduleKey);
   }
 
+  let navigationStarted = false;
+  const prefetchedTargets = new Set();
+  const STATUS_CACHE_KEY = 'zhiban-status-cache-v1';
+  const STATUS_CACHE_TTL_MS = 5000;
+  const STATUS_CACHE_PREFIX = 'zhiban-status:';
+
+  function readStatusCache() {
+    let raw = null;
+    try { raw = sessionStorage.getItem(STATUS_CACHE_KEY); } catch { /* opaque sandbox origin */ }
+    if (!raw && window.name.startsWith(STATUS_CACHE_PREFIX)) raw = window.name.slice(STATUS_CACHE_PREFIX.length);
+    try {
+      const value = JSON.parse(raw || 'null');
+      if (!value || Date.now() - Number(value.savedAt || 0) > STATUS_CACHE_TTL_MS) return null;
+      return value;
+    } catch { return null; }
+  }
+
+  function writeStatusCache(order, states) {
+    const raw = JSON.stringify({
+      savedAt: Date.now(),
+      menuOrder: order.map((item) => item.key),
+      modules: [...states.values()],
+    });
+    try { sessionStorage.setItem(STATUS_CACHE_KEY, raw); } catch { /* opaque sandbox origin */ }
+    window.name = STATUS_CACHE_PREFIX + raw;
+  }
+
+  function routeSignature(value) {
+    const url = new URL(value, location.href);
+    const path = decodeURIComponent(url.pathname).replace(/\/_t\/[^/]+\//, '/_t/:token/');
+    const params = [...url.searchParams.entries()]
+      .filter(([key]) => !['asset_token', 'theme', 'embedded'].includes(key))
+      .sort(([a], [b]) => a.localeCompare(b));
+    return url.origin + path + '?' + new URLSearchParams(params).toString();
+  }
+
+  function sameNavigationTarget(target) {
+    return routeSignature(target) === routeSignature(location.href);
+  }
+
+  function prefetchTarget(target) {
+    const url = new URL(target, location.href);
+    const href = url.href;
+    if (sameNavigationTarget(href) || prefetchedTargets.has(href)) return;
+    prefetchedTargets.add(href);
+    const link = document.createElement('link');
+    link.rel = 'prefetch';
+    link.as = 'document';
+    link.href = href;
+    document.head.append(link);
+  }
+
+  function navigateShell(target) {
+    const url = new URL(target, location.href);
+    if (sameNavigationTarget(url.href)) return false;
+    if (navigationStarted) return false;
+    navigationStarted = true;
+    document.documentElement.dataset.navigating = 'true';
+    document.documentElement.setAttribute('aria-busy', 'true');
+    window.location.replace(url.href);
+    return true;
+  }
+
+  function bindPrefetch(anchor) {
+    const warm = () => prefetchTarget(anchor.href);
+    anchor.addEventListener('pointerenter', warm, { once: true });
+    anchor.addEventListener('focus', warm, { once: true });
+    anchor.addEventListener('touchstart', warm, { once: true, passive: true });
+  }
+
   function renderNavigation(order, states) {
-    if (document.getElementById('zhiban-module-nav')) return;
     document.documentElement.dataset.zhibanShell = 'true';
-    const root = document.createElement('aside');
+    const existing = document.getElementById('zhiban-module-nav');
+    const root = existing || document.createElement('aside');
     root.id = 'zhiban-module-nav';
     root.setAttribute('aria-label', '知伴侧栏');
     const brand = document.createElement('a');
@@ -181,6 +261,7 @@
       const label = document.createElement('span');
       label.textContent = group.label;
       link.append(mark, label);
+      bindPrefetch(link);
       primary.append(link);
     }
     const sectionLabel = document.createElement('div');
@@ -206,6 +287,7 @@
       state.className = 'zb-state ' + stateName;
       state.setAttribute('aria-label', states.get(item.key)?.readiness?.label || stateName || '状态未知');
       link.append(mark, label, state);
+      bindPrefetch(link);
       list.append(link);
     }
     const actions = document.createElement('div');
@@ -213,22 +295,25 @@
     const settingsLink = document.createElement('a');
     settingsLink.href = shellUrl('settings', moduleKey);
     settingsLink.textContent = '配置当前模块';
+    bindPrefetch(settingsLink);
     actions.append(settingsLink);
     const footer = document.createElement('div');
     footer.className = 'zb-footer';
     const footerStrong = document.createElement('strong');
     footerStrong.textContent = 'AstrBot · OneBot 11';
     footer.append(footerStrong, document.createTextNode('十个模块，一个知伴'));
-    root.append(brand, primary, sectionLabel, list, actions, footer);
-    document.body.prepend(root);
-    root.addEventListener('click', (event) => {
-      const anchor = event.target.closest?.('a[href]');
-      if (!anchor || anchor.target === '_blank') return;
-      const target = new URL(anchor.href, location.href);
-      if (target.origin !== location.origin) return;
-      event.preventDefault();
-      window.location.replace(target.href);
-    });
+    root.replaceChildren(brand, primary, sectionLabel, list, actions, footer);
+    if (!existing) {
+      document.body.prepend(root);
+      root.addEventListener('click', (event) => {
+        const anchor = event.target.closest?.('a[href]');
+        if (!anchor || anchor.target === '_blank') return;
+        const target = new URL(anchor.href, location.href);
+        if (target.origin !== location.origin) return;
+        event.preventDefault();
+        navigateShell(target.href);
+      });
+    }
     renderReadinessNotice(states.get(moduleKey));
   }
 
@@ -274,13 +359,23 @@
   }
 
   async function start() {
+    const cached = embedded ? null : readStatusCache();
+    let order = modules;
+    let states = new Map();
+    if (cached && Array.isArray(cached.modules)) {
+      states = new Map(cached.modules.map((item) => [item.key, item]));
+      if (Array.isArray(cached.menuOrder)) {
+        const rank = new Map(cached.menuOrder.map((key, index) => [key, index]));
+        order = [...modules].sort((a, b) => (rank.get(a.key) ?? 999) - (rank.get(b.key) ?? 999));
+      }
+    }
+    if (!embedded) renderNavigation(order, states);
     await bridged.ready();
     if (embedded) {
       installEmbeddedTheme();
       return;
     }
-    let order = modules;
-    let states = new Map();
+    if (cached) return;
     try {
       const result = await original.apiGet('ui/status');
       const payload = result?.data?.modules ? result.data : result?.data || result;
@@ -289,6 +384,7 @@
         const rank = new Map(payload.menu_order.map((key, index) => [key, index]));
         order = [...modules].sort((a, b) => (rank.get(a.key) ?? 999) - (rank.get(b.key) ?? 999));
       }
+      writeStatusCache(order, states);
     } catch { /* Keep navigation available if the status request fails. */ }
     renderNavigation(order, states);
   }

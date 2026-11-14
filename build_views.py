@@ -18,6 +18,7 @@ BRIDGE_ADAPTATIONS = {
     "scope": "mapped upstream index.html files",
     "mode": "authenticated SDK and module bridge injection",
     "theme": "module_bridge.js controlled light-green overrides",
+    "motion": "cross-document CSS transition with reduced-motion opt-out",
     "unchanged_non_html_assets": True,
 }
 def _safe_relative_file(root: Path, value: str) -> Path | None:

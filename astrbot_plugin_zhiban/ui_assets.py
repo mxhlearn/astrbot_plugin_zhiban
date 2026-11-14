@@ -238,7 +238,8 @@ def prepare_module_ui_html(
         (key for key, root in MODULE_UI_ROOTS.items() if root[0] == plugin_name),
         None,
     )
-    script = '<script src="/api/plugin/page/bridge-sdk.js"></script>'
+    script = '<meta name="view-transition" content="same-origin">'
+    script += '<script src="/api/plugin/page/bridge-sdk.js"></script>'
     if module_key:
         script += f'<script src="{module_bridge_src}" data-module-key="{module_key}"></script>'
     match = re.search(r"<head\b[^>]*>", html, flags=re.IGNORECASE)

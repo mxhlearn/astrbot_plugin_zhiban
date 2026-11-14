@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>知伴</title>
+  <meta name="view-transition" content="same-origin">
   <style>
     :root {
       color-scheme: light;
@@ -44,6 +45,25 @@
     }
     * { box-sizing: border-box; letter-spacing: 0; }
     [hidden] { display: none !important; }
+    @view-transition { navigation: auto; }
+    ::view-transition-old(root) { animation: zb-fade-out .12s ease both; }
+    ::view-transition-new(root) { animation: zb-fade-in .16s ease both; }
+    @keyframes zb-fade-out { to { opacity: .35; } }
+    @keyframes zb-fade-in { from { opacity: .35; } to { opacity: 1; } }
+    html[data-navigating="true"] { cursor: progress; }
+    html[data-navigating="true"] body::after {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 2147483647;
+      width: 34%;
+      height: 2px;
+      content: "";
+      pointer-events: none;
+      background: var(--zb-green);
+      animation: zb-progress .75s ease-in-out infinite alternate;
+    }
+    @keyframes zb-progress { from { transform: translateX(-20%); } to { transform: translateX(215%); } }
     html, body { min-height: 100%; }
     body {
       margin: 0;
@@ -458,6 +478,12 @@
       .settings-toolbar { position: static; }
       .settings-toolbar .settings-button { flex: 1 1 calc(50% - 8px); }
     }
+    @media (max-width: 600px) {
+      .primary-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .primary-nav-item { min-height: 40px; padding: 6px 4px; font-size: 10px; }
+      .page-heading h1 { font-size: 20px; }
+      .top-actions { gap: 6px; }
+    }
     @media (max-width: 430px) {
       .primary-nav-item { font-size: 10px; }
       .stats-grid { grid-template-columns: 1fr; }
@@ -468,6 +494,8 @@
       .state-chip { margin-left: 55px; }
     }
     @media (prefers-reduced-motion: reduce) {
+      ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
+      html[data-navigating="true"] body::after { animation: none !important; }
       *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
     }
   </style>

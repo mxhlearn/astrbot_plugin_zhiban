@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import time
 from pathlib import Path
 
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse
@@ -41,6 +42,7 @@ class ZhibanPlugin(Star):
         self.host = None
         self.persona = None
         self._settings_lock = asyncio.Lock()
+        self._readiness_cache: dict[str, tuple[float, dict]] = {}
         self._config_schema = json.loads(
             (Path(__file__).parent / "_conf_schema.json").read_text(encoding="utf-8")
         )
@@ -145,11 +147,6 @@ class ZhibanPlugin(Star):
             return JSONResponse({"status": "error", "message": "未授权"}, status_code=401)
         if request.method.upper() == "GET":
             payload = self._global_config_payload()
-            status_data = await self._ui_status()
-            module_states = status_data.get("data", {}).get("modules", [])
-            readiness = {item["key"]: item.get("readiness") for item in module_states}
-            for module in payload["modules"]:
-                module["readiness"] = readiness.get(module["key"])
             return JSONResponse({"status": "ok", "data": payload})
 
         body = await request.get_json(silent=True)
@@ -247,6 +244,7 @@ class ZhibanPlugin(Star):
             for key in pending:
                 try:
                     statuses = await self.host.reload_module(key)
+                    self._readiness_cache.pop(key, None)
                     state = next((item for item in statuses if item["key"] == key), None)
                     if state and state.get("state") in {"failed", "blocked"}:
                         failures.append({"key": key, "message": state.get("error") or "模块启动失败"})
@@ -288,39 +286,49 @@ class ZhibanPlugin(Star):
                 return {"state": "starting", "label": "初始化中", "detail": "记忆组件尚未就绪"}
 
         if key == "qzone":
+            cache_store = getattr(self, "_readiness_cache", {})
+            self._readiness_cache = cache_store
+            cached = cache_store.get("qzone")
+            if cached and time.monotonic() - cached[0] < 5.0:
+                return dict(cached[1])
+            def remember(result: dict) -> dict:
+                cache_store["qzone"] = (time.monotonic(), dict(result))
+                return result
             controller = getattr(instance, "controller", None)
             get_status = getattr(controller, "get_status", None)
             if not callable(get_status):
-                return {"state": "unknown", "label": "未检测", "detail": "空间连接状态接口不可用"}
+                return remember({"state": "unknown", "label": "未检测", "detail": "空间连接状态接口不可用"})
             try:
                 status = await asyncio.wait_for(
                     get_status(probe_daemon=False),
                     timeout=1.5,
                 )
             except Exception as exc:
-                return {
+                return remember({
                     "state": "unknown",
                     "label": "检测失败",
                     "detail": f"未取得空间连接状态：{type(exc).__name__}",
-                }
+                })
             try:
                 cookie_count = int(status.get("cookie_count") or 0) if isinstance(status, dict) else 0
             except (TypeError, ValueError):
                 cookie_count = 0
             needs_rebind = bool(status.get("needs_rebind")) if isinstance(status, dict) else True
             if not cookie_count or needs_rebind:
-                return {
+                return remember({
                     "state": "not_ready",
                     "label": "待配置",
                     "detail": "没有可用空间 Cookie，动态功能尚未就绪",
-                }
+                })
             daemon_state = str(status.get("daemon_state") or "")
             if daemon_state and daemon_state not in {"ready", "running"}:
-                return {
+                result = {
                     "state": "not_ready",
                     "label": "待连接",
                     "detail": f"空间守护进程状态：{daemon_state}",
                 }
+                return remember(result)
+            return remember({"state": "ready", "label": "业务可用", "detail": "模块已运行并完成启动检查"})
 
         return {"state": "ready", "label": "业务可用", "detail": "模块已运行并完成启动检查"}
 
@@ -513,6 +521,7 @@ class ZhibanPlugin(Star):
             return JSONResponse({"status": "error", "message": "模块宿主尚未就绪"}, status_code=503)
         try:
             statuses = await self.host.reload_module(module)
+            self._readiness_cache.pop(module, None)
         except KeyError:
             return JSONResponse({"status": "error", "message": "模块不存在"}, status_code=404)
         except Exception:

@@ -34,6 +34,7 @@ class ModuleUiAssetTests(unittest.TestCase):
         source = '<html><head><script src="/api/plugin/page/bridge-sdk.js"></script><script src="./app.js"></script></head></html>'
         result = ui_assets.prepare_module_ui_html(source, "astrbot_plugin_angel_heart")
         self.assertEqual(result.count("/api/plugin/page/bridge-sdk.js"), 1)
+        self.assertIn('<meta name="view-transition" content="same-origin">', result)
         self.assertIn('src="../../module_bridge.js" data-module-key="heart"', result)
         self.assertLess(result.index("/api/plugin/page/bridge-sdk.js"), result.index("module_bridge.js"))
         self.assertLess(result.index("module_bridge.js"), result.index('src="./app.js"'))
