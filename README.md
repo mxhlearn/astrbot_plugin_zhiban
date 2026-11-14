@@ -8,13 +8,13 @@
 **把分散的 AstrBot QQ 机器人能力，整理成一个真正可用的中文应用。**
 
 [![Version](https://img.shields.io/badge/version-0.3.1-2f6b4f?style=flat-square)](astrbot_plugin_zhiban/metadata.yaml)
-[![AstrBot](https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square)](astrbot_plugin_zhiban/metadata.yaml)
+[![AstrBot](https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square)](https://github.com/AstrBotDevs/AstrBot)
 [![OneBot](https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square)](#兼容矩阵)
 [![Python](https://img.shields.io/badge/Python-3.12-3f7560?style=flat-square)](#本地开发)
 [![Tests](https://img.shields.io/badge/tests-97%20Python%20%2B%2017%20Node-2f6b4f?style=flat-square)](#质量与验证)
-[![License](https://img.shields.io/badge/license-mixed%20%2F%20review%20required-8c5917?style=flat-square)](astrbot_plugin_zhiban/README.md#来源许可与移植边界)
+[![License](https://img.shields.io/badge/license-mixed%20%2F%20review%20required-8c5917?style=flat-square)](astrbot_plugin_zhiban/README.md)
 
-[快速开始](#快速开始) · [功能模块](#十个运行模块) · [界面](#界面) · [安装](astrbot_plugin_zhiban/README.md#安装与切换) · [完整文档](astrbot_plugin_zhiban/README.md)
+[快速开始](#快速开始) · [功能模块](#十个运行模块) · [完整文档](astrbot_plugin_zhiban/README.md)
 
 </div>
 
@@ -153,7 +153,7 @@
 - **竞态**：快速并发跳转最终停留在最后目标，旧页面结果不覆盖新页面。
 - **构建**：830 个发布文件、79 个生成页面资源；资源清单、ZIP、安装副本和 SHA-256 对照通过。
 
-发布包：[`dist/zhiban-0.3.1.zip`](dist/zhiban-0.3.1.zip)
+本地构建产物：`dist/zhiban-0.3.1.zip`（`dist/` 不进入 Git；可从 Release Assets 或本地构建取得）
 
 SHA-256：`a91d8dfb477311edb8fbd8c65b218ae6eb92dd714e3d2299be24e49ca1bda0d6`
 
@@ -174,7 +174,7 @@ AI 开发记录如实区分“辅助编码模型”和“曾参与方案/审查�
 
 以下项目通过服务器快照整合为知伴内部模块，业务能力、名称、版本和上游来源以各模块 `metadata.yaml` 及随附许可证为准。
 
-| 知伴模块（快照版本） | 参考 / 上游项目 | 保留内容 | 许可证状态 |
+| 知伴模块（快照版本） | 上游项目 | 保留内容 | 许可证状态 |
 | --- | --- | --- | --- |
 | 聊天互动（2.2.13） | [kawayiYokami/astrbot_plugin_angel_heart](https://github.com/kawayiYokami/astrbot_plugin_angel_heart) | 天使之心聊天流程与页面 | AGPL v3 |
 | 记忆成长（2.8.2） | [lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory](https://github.com/lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory) | 长期记忆、图谱、召回、提示词与数据工具 | AGPL v3 |
