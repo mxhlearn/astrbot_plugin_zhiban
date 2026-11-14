@@ -1,16 +1,17 @@
 """菜单顺序为个人聊天机器人的预设使用频率，不冒充用户使用统计。"""
 
 MODULES = (
-    {"key": "heart", "label": "聊天互动", "package": "astrbot_plugin_angel_heart"},
+    {"key": "heart", "label": "聊天互动", "package": "astrbot_plugin_angel_heart", "group": "聊天系统"},
     {"key": "memory", "label": "记忆成长", "package": "astrbot_plugin_livingmemory"},
     {"key": "meme", "label": "表情互动", "package": "astrbot_plugin_meme_manager"},
     {"key": "tts", "label": "语音回复", "package": "astrbot_plugin_breeze_tts"},
-    {"key": "proactive", "label": "主动问候", "package": "astrbot_plugin_proactive_chat"},
+    {"key": "proactive", "label": "主动问候", "package": "astrbot_plugin_proactive_chat", "group": "聊天系统"},
     {"key": "brush", "label": "图片创作", "package": "astrbot_plugin_angel_brush"},
     {"key": "music", "label": "音乐点播", "package": "astrbot_plugin_listen_music"},
-    {"key": "eye", "label": "历史查询", "package": "astrbot_plugin_angel_eye"},
-    {"key": "qzone", "label": "QQ空间", "package": "astrbot_plugin_qzone_ultra"},
-    {"key": "filter", "label": "内容过滤", "package": "astrbot_plugin_link_filter"},
+    {"key": "eye", "label": "历史查询", "package": "astrbot_plugin_angel_eye", "group": "聊天系统"},
+    {"key": "qzone", "label": "QQ 动态", "package": "astrbot_plugin_qzone_ultra", "group": "QQ 社交"},
+    {"key": "filter", "label": "内容过滤", "package": "astrbot_plugin_link_filter", "group": "聊天系统"},
+    {"key": "qqprofile", "label": "QQ 资料", "package": "astrbot_plugin_qqprofile", "group": "QQ 社交"},
 )
 
 

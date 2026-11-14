@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,61 @@ spec.loader.exec_module(build_views_module)
 
 
 class BuildViewsTests(unittest.TestCase):
+    def test_materializes_brand_and_each_module_logo(self):
+        plugin_root = Path(__file__).parents[1] / "astrbot_plugin_zhiban"
+        with tempfile.TemporaryDirectory() as temp:
+            view_root = Path(temp) / "views" / "知伴"
+            result = build_views_module.build_views(plugin_root, view_root=view_root)
+
+            self.assertEqual(result["logos"], len(build_views_module.MODULES))
+            self.assertEqual((view_root / "logo.png").read_bytes(), (plugin_root / "logo.png").read_bytes())
+            for module in build_views_module.MODULES:
+                source = plugin_root / "modules" / module["package"] / "logo.png"
+                if not source.is_file():
+                    source = plugin_root / build_views_module.LOGO_FALLBACKS[module["key"]]
+                target = view_root / "logos" / f"{module['key']}{source.suffix.lower()}"
+                self.assertEqual(target.read_bytes(), source.read_bytes())
+
+    def test_app_page_routes_match_generated_module_views(self):
+        plugin_root = Path(__file__).parents[1] / "astrbot_plugin_zhiban"
+        app_source = (plugin_root / "views" / "知伴" / "app.js").read_text(encoding="utf-8")
+        for module in build_views_module.MODULE_UI_ROOTS:
+            with self.subTest(module=module):
+                self.assertRegex(
+                    app_source,
+                    rf'\{{ key: "{re.escape(module)}"[^\n]*page: "{re.escape(module)}"',
+                )
+                self.assertTrue(
+                    (plugin_root / "views" / "知伴" / "modules" / module / "index.html").is_file()
+                )
+
+        for module in ("proactive", "eye", "filter", "qqprofile"):
+            with self.subTest(message_pipeline_module=module):
+                entry = next(line for line in app_source.splitlines() if f'key: "{module}"' in line)
+                self.assertIn("help:", entry)
+                self.assertNotIn("page:", entry)
+
+    def test_chat_and_qq_features_share_coherent_app_groups(self):
+        app_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "app.js").read_text(encoding="utf-8")
+        for module in ("heart", "proactive", "eye", "filter"):
+            entry = next(line for line in app_source.splitlines() if f'key: "{module}"' in line)
+            self.assertIn('group: "聊天系统"', entry)
+        for module in ("qzone", "qqprofile"):
+            entry = next(line for line in app_source.splitlines() if f'key: "{module}"' in line)
+            self.assertIn('group: "QQ 社交"', entry)
+        self.assertIn("renderRelatedModules", app_source)
+        self.assertIn("nav-logo", app_source)
+
+    def test_qq_profile_source_keeps_status_signature_and_license(self):
+        root = Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "modules" / "astrbot_plugin_qqprofile"
+        source = (root / "main.py").read_text(encoding="utf-8")
+        license_text = (root / "LICENSE").read_text(encoding="utf-8")
+        self.assertIn('@filter.command("设置状态")', source)
+        self.assertIn('@filter.command("设置签名")', source)
+        self.assertIn("set_online_status", source)
+        self.assertIn("set_self_longnick", source)
+        self.assertIn("GNU AFFERO GENERAL PUBLIC LICENSE", license_text)
+
     def test_bundled_pages_match_sources_except_required_bridge_shim(self):
         plugin_root = Path(__file__).parents[1] / "astrbot_plugin_zhiban"
         with tempfile.TemporaryDirectory() as temp:
@@ -33,8 +89,12 @@ class BuildViewsTests(unittest.TestCase):
                     generated = view_root / "modules" / module / relative
                     self.assertTrue(generated.is_file(), f"Missing copied asset: {module}/{relative}")
                     if source.name.lower() == "index.html":
+                        depth = 2 + len(relative.parent.parts)
+                        bridge_src = "../" * depth + "module_bridge.js"
                         expected = build_views_module.prepare_module_ui_html(
-                            source.read_text(encoding="utf-8"), source_parts[0]
+                            source.read_text(encoding="utf-8"),
+                            source_parts[0],
+                            module_bridge_src=bridge_src,
                         )
                         self.assertEqual(generated.read_text(encoding="utf-8"), expected)
                     else:
@@ -47,7 +107,7 @@ class BuildViewsTests(unittest.TestCase):
             }
             self.assertEqual(generated_paths, expected_paths)
 
-    def test_materializes_selected_page_and_installs_authenticated_legacy_bridge(self):
+    def test_materializes_selected_page_with_sdk_adapter_before_app_scripts(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source = root / "modules" / "astrbot_plugin_meme_manager" / "pages" / "app"
@@ -68,10 +128,29 @@ class BuildViewsTests(unittest.TestCase):
 
             page = (view_root / "modules" / "meme" / "index.html").read_text(encoding="utf-8")
             self.assertEqual(result["files"], 2)
-            self.assertIn('const pluginName = "meme_manager"', page)
-            self.assertIn('channel: CHANNEL', page)
-            self.assertLess(page.index("send(\"ready\")"), page.index('src="./app.js"'))
+            self.assertEqual(page.count("/api/plugin/page/bridge-sdk.js"), 1)
+            self.assertIn("module_bridge.js", page)
+            self.assertIn('data-module-key="meme"', page)
+            self.assertLess(page.index("/api/plugin/page/bridge-sdk.js"), page.index("module_bridge.js"))
+            self.assertLess(page.index("module_bridge.js"), page.index('src="./app.js"'))
             self.assertIn("window.testPage = true;", (view_root / "modules" / "meme" / "app.js").read_text(encoding="utf-8"))
+
+    def test_nested_pages_resolve_bridge_from_signed_view_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "modules" / "astrbot_plugin_meme_manager" / "pages" / "app" / "a_manage"
+            source.mkdir(parents=True)
+            (source / "index.html").write_text("<html><head></head></html>", encoding="utf-8")
+            view_root = root / "views" / "知伴"
+
+            build_views_module.build_views(
+                root,
+                view_root=view_root,
+                mapping={"meme": ("astrbot_plugin_meme_manager", "pages", "app")},
+            )
+
+            page = (view_root / "modules" / "meme" / "a_manage" / "index.html").read_text(encoding="utf-8")
+            self.assertIn('src="../../../module_bridge.js" data-module-key="meme"', page)
 
     def test_previous_manifest_controls_stale_file_cleanup(self):
         with tempfile.TemporaryDirectory() as temp:

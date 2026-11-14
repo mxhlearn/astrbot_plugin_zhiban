@@ -26,6 +26,7 @@ MODULE_API_NAMES = {
     "eye": "astrbot_plugin_angel_eye",
     "qzone": "astrbot_plugin_qzone_ultra",
     "filter": "astrbot_plugin_link_filter",
+    "qqprofile": "astrbot_plugin_qqprofile",
 }
 
 
@@ -221,15 +222,26 @@ def legacy_bridge_script(plugin_name: str) -> str:
     )
 
 
-def prepare_module_ui_html(html: str, plugin_name: str) -> str:
-    """Install the compatibility bridge before the bundled page scripts run."""
+def prepare_module_ui_html(
+    html: str,
+    plugin_name: str,
+    *,
+    module_bridge_src: str = "../../module_bridge.js",
+) -> str:
+    """Add AstrBot's SDK and module adapter before bundled page scripts."""
     html = re.sub(
         r"<script\b[^>]*\bsrc=[\"']\/api\/plugin\/page\/bridge-sdk\.js(?:\?[^\"']*)?[\"'][^>]*>\s*<\/script>",
         "",
         html,
         flags=re.IGNORECASE,
     )
-    script = legacy_bridge_script(plugin_name)
+    module_key = next(
+        (key for key, root in MODULE_UI_ROOTS.items() if root[0] == plugin_name),
+        None,
+    )
+    script = '<script src="/api/plugin/page/bridge-sdk.js"></script>'
+    if module_key:
+        script += f'<script src="{module_bridge_src}" data-module-key="{module_key}"></script>'
     match = re.search(r"<head\b[^>]*>", html, flags=re.IGNORECASE)
     if match:
         return html[: match.end()] + script + html[match.end() :]

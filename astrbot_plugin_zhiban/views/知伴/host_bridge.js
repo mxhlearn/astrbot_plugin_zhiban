@@ -11,6 +11,7 @@
     eye: "astrbot_plugin_angel_eye",
     qzone: "astrbot_plugin_qzone_ultra",
     filter: "astrbot_plugin_link_filter",
+    qqprofile: "astrbot_plugin_qqprofile",
   };
   const frames = new Map();
   const bridge = () => window.AstrBotPluginView || window.AstrBotPluginPage;
@@ -28,9 +29,7 @@
   }
 
   function moduleProxyEndpoint(moduleKey, endpoint) {
-    assertModuleEndpoint(moduleKey, endpoint);
-    const prefix = `${MODULE_API_NAMES[moduleKey]}/`;
-    const path = endpoint.slice(prefix.length);
+    const path = moduleRelativeEndpoint(moduleKey, endpoint);
     return `ui/module_api/${moduleKey}/${path}`;
   }
 
@@ -57,10 +56,26 @@
   }
 
   function assertModuleEndpoint(moduleKey, endpoint) {
-    const prefix = `${MODULE_API_NAMES[moduleKey]}/`;
-    if (!MODULE_API_NAMES[moduleKey] || typeof endpoint !== "string" || !endpoint.startsWith(prefix)) {
+    moduleRelativeEndpoint(moduleKey, endpoint);
+  }
+
+  function moduleRelativeEndpoint(moduleKey, endpoint) {
+    const moduleName = MODULE_API_NAMES[moduleKey];
+    if (!moduleName || typeof endpoint !== "string") {
       throw new Error("模块 API 范围不匹配");
     }
+    const value = endpoint.replace(/^\/+/, "");
+    if (!value || value.includes("\\") || value.includes("://") || value.includes("?") || value.includes("#") ||
+        value.split("/").some((part) => !part || part === "." || part === "..")) {
+      throw new Error("模块 API 路径无效");
+    }
+    const prefix = `${moduleName}/`;
+    if (value.startsWith(prefix)) return value.slice(prefix.length);
+    if (value === moduleName || value === APP_PLUGIN_NAME || value.startsWith(`${APP_PLUGIN_NAME}/`) ||
+        Object.values(MODULE_API_NAMES).some((name) => name !== moduleName && (value === name || value.startsWith(`${name}/`)))) {
+      throw new Error("模块 API 范围不匹配");
+    }
+    return value;
   }
 
   async function handleRequest(frame, state, message) {
@@ -75,6 +90,7 @@
 
     switch (message.action) {
       case "api:get":
+        if (moduleRelativeEndpoint(state.module, endpoint) === "bridge/auth_token") return { token: "" };
         return api.apiGet(proxyEndpoint, payload.params);
       case "api:post":
         return api.apiPost(proxyEndpoint, payload.body);
@@ -142,6 +158,8 @@
     const message = event.data;
     if (!message || message.channel !== CHANNEL) return;
     if (message.kind === "ready") {
+      state.bridgeReady = true;
+      frame.dataset.bridgeReady = "true";
       const parentContext = bridge()?.getContext?.() || {};
       post(frame, {
         channel: CHANNEL,
@@ -183,8 +201,9 @@
     attachFrame(frame, module, label) {
       const previous = frames.get(frame);
       if (previous) void cleanupFrame(frame, previous);
-      const state = { module, label, subscriptions: new Map(), loaded: false };
+      const state = { module, label, subscriptions: new Map(), loaded: false, bridgeReady: false };
       frames.set(frame, state);
+      frame.dataset.bridgeReady = "false";
       frame.addEventListener("load", () => {
         if (state.loaded) void cleanupFrame(frame, state);
         state.loaded = true;

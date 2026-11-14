@@ -15,8 +15,16 @@ def build():
     build_views()
     out = ROOT / "dist"
     out.mkdir(exist_ok=True)
+    version_line = None
+    for line in (PLUGIN / "metadata.yaml").read_text(encoding="utf-8").splitlines():
+        if line.startswith("version:"):
+            version_line = line.split(":", 1)[1].strip().strip("'")
+            break
+    if not version_line:
+        raise ValueError("Plugin metadata has no version")
+    archive = out / f"zhiban-{version_line}.zip"
     manifest = []
-    with zipfile.ZipFile(out / "zhiban-0.1.0.zip", "w", zipfile.ZIP_DEFLATED) as z:
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
         for p in sorted(PLUGIN.rglob("*")):
             if not p.is_file():
                 continue
@@ -36,7 +44,6 @@ def build():
             z.writestr(name, raw)
             manifest.append({"path": name, "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()})
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    archive = out / "zhiban-0.1.0.zip"
     print(json.dumps({"files": len(manifest), "archive_bytes": archive.stat().st_size,
                       "sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}))
 

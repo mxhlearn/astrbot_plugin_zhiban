@@ -34,6 +34,28 @@ export function normalizeProviderOptions(providers = {}, kind = "chat_completion
   return [...unique.values()];
 }
 
+function optionalFiniteNumber(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function numericConstraints(definition = {}) {
+  const slider = definition.slider && typeof definition.slider === "object" ? definition.slider : {};
+  return {
+    min: optionalFiniteNumber(slider.min ?? definition.min),
+    max: optionalFiniteNumber(slider.max ?? definition.max),
+    step: slider.step ?? definition.step ?? (definition.type === "int" ? 1 : "any"),
+  };
+}
+
+export function validateNumericValue(value, definition = {}, label = "数值") {
+  if (definition.type !== "int" && definition.type !== "float") return;
+  const { min, max } = numericConstraints(definition);
+  if (min !== null && value < min) throw new Error(`${label} 不能小于 ${min}`);
+  if (max !== null && value > max) throw new Error(`${label} 不能大于 ${max}`);
+}
+
 function fallbackFor(type) {
   if (type === "bool") return false;
   if (type === "int") return 0;

@@ -46,6 +46,7 @@ async function createBridge() {
   const sent = [];
   const frame = {
     contentWindow: { postMessage: (message, origin) => sent.push({ message, origin }) },
+    dataset: {},
     addEventListener: () => {},
   };
   const detach = window.ZhibanBridge.attachFrame(frame, "meme", "表情互动");
@@ -63,6 +64,7 @@ test("shell broker proxies child API requests through the authenticated Zhiban r
   await bridge.sendFromChild({ kind: "ready" });
   assert.equal(bridge.sent[0].message.kind, "context");
   assert.equal(bridge.sent[0].message.context.pluginName, "meme_manager");
+  assert.equal(bridge.frame.dataset.bridgeReady, "true");
 
   await bridge.sendFromChild({ kind: "request", requestId: "1", action: "api:get", endpoint: "meme_manager/packs", params: {} });
   assert.deepEqual(bridge.calls[0], ["get", "ui/module_api/meme/packs", {}]);
@@ -72,6 +74,26 @@ test("shell broker proxies child API requests through the authenticated Zhiban r
   await bridge.sendFromChild({ kind: "request", requestId: "2", action: "api:get", endpoint: "astrbot_plugin_qzone_ultra/page/status" });
   assert.equal(bridge.calls.length, 1);
   assert.equal(bridge.sent.at(-1).message.ok, false);
+});
+
+test("shell broker accepts official SDK plugin-relative endpoints and rejects path escapes", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "request", requestId: "bare", action: "api:get", endpoint: "packs", params: {} });
+  assert.deepEqual(bridge.calls[0], ["get", "ui/module_api/meme/packs", {}]);
+  assert.equal(bridge.sent.at(-1).message.ok, true);
+
+  await bridge.sendFromChild({ kind: "request", requestId: "other", action: "api:get", endpoint: "astrbot_plugin_qzone_ultra/page/status" });
+  assert.equal(bridge.sent.at(-1).message.ok, false);
+  await bridge.sendFromChild({ kind: "request", requestId: "escape", action: "api:get", endpoint: "../status" });
+  assert.equal(bridge.sent.at(-1).message.ok, false);
+  assert.equal(bridge.calls.length, 1);
+});
+
+test("shell broker never forwards a child request for an AstrBot asset token", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "request", requestId: "token", action: "api:get", endpoint: "bridge/auth_token" });
+  assert.equal(bridge.sent.at(-1).message.data.token, "");
+  assert.equal(bridge.calls.length, 0);
 });
 
 test("shell API endpoints stay plugin-relative for AstrBot's SDK prefix", async () => {

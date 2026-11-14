@@ -284,6 +284,33 @@ def test_installed_livingmemory_and_qzone_settings_import_without_disabling_modu
     assert "test-embedding" not in json.dumps(records)
 
 
+def test_qqprofile_settings_import_and_preserve_existing_host_values(tmp_path):
+    legacy = {"sync_name": True}
+    write_legacy(tmp_path, "qqprofile", legacy)
+    schema = {
+        "qqprofile": {
+            "items": {
+                "settings": {
+                    "type": "object",
+                    "items": {"sync_name": {"type": "bool", "default": False}},
+                }
+            }
+        }
+    }
+    config = HostConfig(
+        {"qqprofile": {"enabled": True, "settings": {"sync_name": False}}},
+        tmp_path, first_deploy=True, schema=schema,
+    )
+
+    assert legacy_config.import_legacy_settings(config, tmp_path) == ["qqprofile"]
+    assert config["qqprofile"] == {"enabled": True, "settings": legacy}
+    assert migration_state(tmp_path)["modules"]["qqprofile"]["source"] == "astrbot_plugin_qqprofile_config.json"
+
+    config["qqprofile"]["settings"]["sync_name"] = False
+    assert legacy_config.import_legacy_settings(config, tmp_path) == []
+    assert config["qqprofile"]["settings"]["sync_name"] is False
+
+
 def test_qzone_current_filename_takes_priority_over_older_ultra_snapshot(tmp_path):
     write_legacy(tmp_path, "qzone", {"cookies_str": "current-test-cookie"})
     (tmp_path / "astrbot_plugin_qzone_ultra_config.json").write_text(

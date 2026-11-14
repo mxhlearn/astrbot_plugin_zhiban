@@ -3047,17 +3047,17 @@
   },
   "qzone": {
     "type": "object",
-    "description": "QQ空间",
+    "description": "QQ 动态",
     "hint": "保留服务器现用实现；更改启用状态后重载知伴。",
     "items": {
       "enabled": {
         "type": "bool",
-        "description": "启用QQ空间",
+        "description": "启用QQ 动态",
         "default": true
       },
       "settings": {
         "type": "object",
-        "description": "QQ空间设置",
+        "description": "QQ 动态设置",
         "items": {
           "manage_group": {
             "description": "管理群",
@@ -3601,6 +3601,30 @@
       }
     }
   },
+  "qqprofile": {
+    "type": "object",
+    "description": "QQ 资料",
+    "hint": "保留服务器现用实现；更改启用状态后重载知伴。",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "启用QQ 资料",
+        "default": true
+      },
+      "settings": {
+        "type": "object",
+        "description": "QQ 资料设置",
+        "items": {
+          "sync_name": {
+            "description": "使bot的Q名与人格名同步",
+            "type": "bool",
+            "hint": "",
+            "default": false
+          }
+        }
+      }
+    }
+  },
   "management": {
     "type": "object",
     "description": "调度与管理",
@@ -3618,7 +3642,8 @@
           "music",
           "eye",
           "qzone",
-          "filter"
+          "filter",
+          "qqprofile"
         ],
         "hint": "默认按预期使用频率排列，不是实测使用统计。"
       },

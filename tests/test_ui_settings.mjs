@@ -7,11 +7,13 @@ import {
   configuredSecretPathList,
   flattenSchema,
   isSensitiveField,
+  numericConstraints,
   normalizeProviderOptions,
   orderModules,
   parseFieldValue,
   setValueAtPath,
   unwrapApiPayload,
+  validateNumericValue,
 } from "../astrbot_plugin_zhiban/views/知伴/settings.mjs";
 
 test("module navigation follows configured order and appends unknown omissions", () => {
@@ -109,6 +111,15 @@ test("schema values parse with strict numeric and JSON types", () => {
   const target = {};
   setValueAtPath(target, ["settings", "timeout"], 12);
   assert.deepEqual(target, { settings: { timeout: 12 } });
+});
+
+test("numeric schema ranges are read from slider metadata and validated", () => {
+  const schema = { type: "int", slider: { min: 10, max: 200, step: 5 } };
+  assert.deepEqual(numericConstraints(schema), { min: 10, max: 200, step: 5 });
+  assert.deepEqual(numericConstraints({ type: "float", min: 0, max: 1 }), { min: 0, max: 1, step: "any" });
+  assert.throws(() => validateNumericValue(9, schema, "评论最大长度"), /不能小于 10/);
+  assert.throws(() => validateNumericValue(201, schema, "评论最大长度"), /不能大于 200/);
+  assert.doesNotThrow(() => validateNumericValue(100, schema, "评论最大长度"));
 });
 
 test("API wrappers normalize success and reject error payloads", () => {

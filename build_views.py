@@ -5,6 +5,7 @@ import json
 import shutil
 from pathlib import Path, PurePosixPath
 
+from astrbot_plugin_zhiban.catalog import MODULES
 from astrbot_plugin_zhiban.ui_assets import MODULE_UI_ROOTS, prepare_module_ui_html
 
 
@@ -13,6 +14,9 @@ PLUGIN_ROOT = ROOT / "astrbot_plugin_zhiban"
 VIEW_ROOT = PLUGIN_ROOT / "views" / "知伴"
 OUTPUT_ROOT = VIEW_ROOT / "modules"
 MANIFEST = VIEW_ROOT / ".zhiban_generated_assets.json"
+LOGO_FALLBACKS = {
+    "filter": Path("assets") / "logos" / "link-filter.svg",
+}
 
 
 def _safe_relative_file(root: Path, value: str) -> Path | None:
@@ -25,6 +29,27 @@ def _safe_relative_file(root: Path, value: str) -> Path | None:
     except ValueError:
         return None
     return target
+
+
+def _materialize_logos(plugin_root: Path, view_root: Path) -> int:
+    """Expose the plugin and module logos inside the signed view's asset root."""
+    brand_source = plugin_root / "logo.png"
+    if not brand_source.is_file():
+        raise FileNotFoundError(f"Missing 知伴 logo: {brand_source}")
+    shutil.copy2(brand_source, view_root / "logo.png")
+
+    logo_root = view_root / "logos"
+    logo_root.mkdir(parents=True, exist_ok=True)
+    for item in MODULES:
+        key = item["key"]
+        package = item["package"]
+        source = plugin_root / "modules" / package / "logo.png"
+        if not source.is_file() and key in LOGO_FALLBACKS:
+            source = plugin_root / LOGO_FALLBACKS[key]
+        if not source.is_file():
+            raise FileNotFoundError(f"Missing logo for module {key}: {source}")
+        shutil.copy2(source, logo_root / f"{key}{source.suffix.lower()}")
+    return len(MODULES)
 
 
 def build_views(
@@ -67,7 +92,11 @@ def build_views(
             destination.parent.mkdir(parents=True, exist_ok=True)
             if source.name.lower() == "index.html":
                 html = source.read_text(encoding="utf-8")
-                html = prepare_module_ui_html(html, source_parts[0])
+                depth = 2 + len(PurePosixPath(relative_inside).parent.parts)
+                bridge_src = "../" * depth + "module_bridge.js"
+                html = prepare_module_ui_html(
+                    html, source_parts[0], module_bridge_src=bridge_src
+                )
                 destination.write_text(html, encoding="utf-8", newline="")
             else:
                 shutil.copy2(source, destination)
@@ -83,7 +112,8 @@ def build_views(
         encoding="utf-8",
         newline="",
     )
-    return {"modules": len(mapping), "files": len(generated), "output": str(output_root)}
+    logos = _materialize_logos(plugin_root, view_root) if mapping == MODULE_UI_ROOTS else 0
+    return {"modules": len(mapping), "files": len(generated), "logos": logos, "output": str(output_root)}
 
 
 if __name__ == "__main__":

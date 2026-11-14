@@ -329,7 +329,11 @@ class ZhibanPlugin(Star):
         if path.name.lower() == "index.html":
             html = path.read_text(encoding="utf-8")
             plugin_name = MODULE_UI_ROOTS[module][0]
-            return HTMLResponse(prepare_module_ui_html(html, plugin_name))
+            depth = 2 + len(Path(asset_path).parent.parts)
+            bridge_src = "../" * depth + "module_bridge.js"
+            return HTMLResponse(
+                prepare_module_ui_html(html, plugin_name, module_bridge_src=bridge_src)
+            )
         return FileResponse(path, headers={"X-Content-Type-Options": "nosniff"})
 
     @filter.on_waiting_llm_request(priority=1000000)

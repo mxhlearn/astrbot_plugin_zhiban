@@ -30,12 +30,25 @@ class ModuleUiAssetTests(unittest.TestCase):
         self.assertIsNone(ui_assets.resolve_module_ui_asset(self.plugin_root, "heart", "../../../../data/cmd_config.json"))
         self.assertIsNone(ui_assets.resolve_module_ui_asset(self.plugin_root, "heart", r"..\..\data\cmd_config.json"))
 
-    def test_legacy_page_bridge_is_injected_before_app_scripts(self):
+    def test_official_sdk_and_module_adapter_precede_app_scripts(self):
         source = '<html><head><script src="/api/plugin/page/bridge-sdk.js"></script><script src="./app.js"></script></head></html>'
         result = ui_assets.prepare_module_ui_html(source, "astrbot_plugin_angel_heart")
-        self.assertNotIn("/api/plugin/page/bridge-sdk.js", result)
-        self.assertLess(result.index('channel: CHANNEL'), result.index('src="./app.js"'))
-        self.assertIn('"astrbot_plugin_angel_heart"', result)
+        self.assertEqual(result.count("/api/plugin/page/bridge-sdk.js"), 1)
+        self.assertIn('src="../../module_bridge.js" data-module-key="heart"', result)
+        self.assertLess(result.index("/api/plugin/page/bridge-sdk.js"), result.index("module_bridge.js"))
+        self.assertLess(result.index("module_bridge.js"), result.index('src="./app.js"'))
+
+    def test_duplicate_official_sdk_tags_are_collapsed_with_one_adapter(self):
+        source = (
+            '<html><head><script src="/api/plugin/page/bridge-sdk.js"></script>'
+            '<script src="/api/plugin/page/bridge-sdk.js?old=1"></script></head>'
+            '<body><script src="/api/plugin/page/bridge-sdk.js"></script></body></html>'
+        )
+        result = ui_assets.prepare_module_ui_html(source, "astrbot_plugin_meme_manager")
+        self.assertEqual(result.count("/api/plugin/page/bridge-sdk.js"), 1)
+        self.assertEqual(result.count("module_bridge.js"), 1)
+        self.assertIn('data-module-key="meme"', result)
+        self.assertLess(result.index("module_bridge.js"), result.index("<body>"))
 
     def test_nested_module_bridge_uses_post_message_contract_for_sandboxed_frames(self):
         script = ui_assets.legacy_bridge_script("astrbot_plugin_meme_manager")

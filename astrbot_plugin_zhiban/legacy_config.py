@@ -15,6 +15,7 @@ LEGACY_CONFIGS = {
     'proactive': 'astrbot_plugin_proactive_chat_config.json',
     'qzone': 'astrbot_plugin_qzone_config.json',
     'filter': 'astrbot_plugin_link_filter_config.json',
+    'qqprofile': 'astrbot_plugin_qqprofile_config.json',
 }
 
 # The installed standalone copy uses qzone; older server snapshots used ultra.
