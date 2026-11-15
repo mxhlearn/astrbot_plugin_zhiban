@@ -134,14 +134,16 @@ def test_tool_schema():
     edit = AngelImageEditTool(data_dir=Path(tempfile.gettempdir()))
 
     assert gen.name == "angel_image_generate"
-    assert "Markdown 图片行" in gen.description
+    assert "file" in gen.description
+    assert "禁止在 markdown 内联" in gen.description
     assert "prompt" in gen.parameters["properties"]
     assert "resolution" in gen.parameters["properties"]
     assert gen.parameters["required"] == ["prompt"]
     assert gen.parameters["additionalProperties"] is False
 
     assert edit.name == "angel_image_edit"
-    assert "Markdown 图片行" in edit.description
+    assert "file" in edit.description
+    assert "禁止在 markdown 内联" in edit.description
     assert "prompt" in edit.parameters["properties"]
     assert "images" in edit.parameters["properties"]
     assert "mask" in edit.parameters["properties"]
@@ -221,7 +223,8 @@ async def test_mock_openai_generate():
             )._tool_success_value(result, "图片已生成并保存到插件数据目录")  # type: ignore
         )
         assert payload["ok"] is True
-        assert "![生成图片]" in payload["message"]
+        assert "file" in payload["message"]
+        assert "send_message_to_user" in payload["message"]
 
 
 @pytest.mark.asyncio

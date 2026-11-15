@@ -20,7 +20,7 @@
           >
             <Icon :icon="isDark ? 'lucide:sun' : 'lucide:moon'" />
           </button>
-          <div v-if="!collapsed" class="brand">天使的画笔</div>
+          <div v-if="!collapsed" class="brand">图片创作</div>
         </div>
         <n-scrollbar class="sider-scroll">
           <n-menu
@@ -41,6 +41,14 @@
     <n-layout-content class="content">
       <n-scrollbar class="content-scroll">
         <div class="content-inner">
+          <n-alert v-if="bridgeMessage" type="warning" :bordered="false" class="bridge-alert">
+            <template #header>页面桥接未就绪</template>
+            <div class="bridge-alert-body">
+              <span>{{ bridgeMessage }}</span>
+              <n-button size="tiny" secondary @click="reload">重试</n-button>
+            </div>
+          </n-alert>
+
           <!-- 供应商设置 -->
           <template v-if="activeKey === 'providers'">
             <div class="content-header">
@@ -60,7 +68,7 @@
 
             <n-spin v-if="loading" style="margin-top: 40px" />
 
-            <template v-else>
+            <template v-else-if="!bridgeMessage">
               <n-empty v-if="!providers.length" description="还没有供应商，点击右上角新增" style="margin-top: 30px" />
 
               <div v-for="(p, pIdx) in providers" :key="p.id" class="provider-card">
@@ -194,7 +202,7 @@
             </div>
 
             <n-spin v-if="loading" style="margin-top: 40px" />
-            <template v-else>
+            <template v-else-if="!bridgeMessage">
               <n-card class="setting-card">
                 <n-form label-placement="top">
                   <n-form-item label="生图模型">
@@ -244,7 +252,7 @@
           </template>
 
           <!-- 工具测试：两工具全参数透传，编辑支持本地上传 -->
-          <template v-else>
+          <template v-else-if="!bridgeMessage">
             <div class="content-header">
               <h2>工具测试</h2>
               <n-button @click="refreshGenerated">
@@ -455,7 +463,7 @@ import {
 } from 'naive-ui'
 import type { MenuOption } from 'naive-ui'
 import { Icon } from '@iconify/vue'
-import { useBridge } from './composables/useBridge'
+import { BRIDGE_UNAVAILABLE_MESSAGE, useBridge } from './composables/useBridge'
 import { themeKey } from './theme'
 
 const { apiGet, apiPost, init } = useBridge()
@@ -521,8 +529,9 @@ interface Provider {
   comfyui_mapping: Record<string, unknown>
 }
 
-const loading = ref(false)
+const loading = ref(true)
 const saving = ref(false)
+const bridgeMessage = ref('')
 const providers = ref<Provider[]>([])
 const defaultModelId = ref<string | null>(null)
 const styleRecommend = ref(false)
@@ -584,8 +593,13 @@ const dirty = computed(() => {
 
 async function reload() {
   loading.value = true
+  bridgeMessage.value = ''
   try {
-    await init()
+    const context = await init()
+    if (!context) {
+      bridgeMessage.value = BRIDGE_UNAVAILABLE_MESSAGE
+      return
+    }
     const data: any = await apiGet('config')
     const list: Provider[] = (data.providers || []).map((p: any) => ({
       id: p.id,
@@ -1000,6 +1014,8 @@ onMounted(() => { void reload() })
 .content { flex: 1; min-width: 0; overflow: hidden; }
 .content-scroll { height: 100%; }
 .content-inner { max-width: 860px; margin: 0 auto; padding: 20px 26px; }
+.bridge-alert { margin-bottom: 14px; }
+.bridge-alert-body { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .content-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
 .content-header h2 { font-size: 16px; color: var(--text-1); }
 .header-actions { display: flex; gap: 8px; align-items: center; }

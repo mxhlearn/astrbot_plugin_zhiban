@@ -7,11 +7,11 @@
 
 **把分散的 AstrBot QQ 机器人能力，整理成一个真正可用的中文应用。**
 
-[![Version](https://img.shields.io/badge/version-0.3.2-2f6b4f?style=flat-square)](astrbot_plugin_zhiban/metadata.yaml)
+[![Version](https://img.shields.io/badge/version-0.3.3-2f6b4f?style=flat-square)](astrbot_plugin_zhiban/metadata.yaml)
 [![AstrBot](https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square)](https://github.com/AstrBotDevs/AstrBot)
 [![OneBot](https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square)](#兼容矩阵)
 [![Python](https://img.shields.io/badge/Python-3.12-3f7560?style=flat-square)](#本地开发)
-[![Tests](https://img.shields.io/badge/tests-101%20Python%20%2B%2017%20Node-2f6b4f?style=flat-square)](#质量与验证)
+[![Tests](https://img.shields.io/badge/tests-102%20Python%20%2B%2021%20Node-2f6b4f?style=flat-square)](#质量与验证)
 [![License](https://img.shields.io/badge/license-mixed%20%2F%20review%20required-8c5917?style=flat-square)](astrbot_plugin_zhiban/README.md)
 
 [快速开始](#快速开始) · [功能模块](#十个运行模块) · [完整文档](astrbot_plugin_zhiban/README.md)
@@ -48,7 +48,7 @@
 
 - 桌面左栏导航；窄屏自动切换为顶部导航。
 - 白色内容区、浅绿背景、深绿主操作，固定品牌语义。
-- 1024、768、390 像素响应式布局已验收。
+- 响应式规则覆盖 1024、768、390 像素；本轮在 1024 桌面视口完成工作台验收，窄屏未重新做视觉回归。
 - 模块正文在知伴内容面板内切换，顶部五入口与侧栏不重绘。
 - 模块的浅绿首帧、桥接 adapter 与 SDK 顺序由构建产物控制；状态就绪需由真实 bridge 事件确认，不以定时器代替。
 
@@ -71,7 +71,7 @@
 | **表情互动** | 图库、分类、发送与语义检索 | 表情包管理页面 |
 | **语音回复** | BreezeBlue TTS、音色、语速、概率 | 语音设置页面 |
 | **主动问候** | 私聊主动消息与后台调度 | AstrBot 事件与计划任务 |
-| **图片创作** | 文生图、改图与供应商配置 | 天使画笔页面 |
+| **图片创作** | 文生图、改图与供应商配置 | 图片创作页面 |
 | **音乐点播** | Bilibili 搜索、下载与音频发送 | 音乐账号页面 |
 | **历史查询** | 群记录检索与分页适配 | 命令、事件与 LLM 工具 |
 | **QQ 动态** | 空间浏览、发布、评论、点赞 | QQ 空间 Ultra 页面 |
@@ -132,47 +132,31 @@
 - 当前页面隐藏时停止知伴状态轮询。
 - 不引入 React/Vue 等新框架，不增加网络字体或重型转场依赖。
 
-当前实测（AstrBot 4.29.3，Windows）：
-
-| 场景 | 结果 |
-| --- | --- |
-| 当前入口重复点击 | 页面不重建，业务请求 0 |
-| 全局设置接口 | 约 26 ms |
-| 模块间重复切换 20 次 | 平均约 1.44 秒，范围约 0.85–1.79 秒 |
-| 页面往返后的 DOM | 外壳文档保持 1 个顶层知伴页面 |
-| AstrBot 主进程空闲工作集 | 约 367 MiB（包含宿主与十个模块，不是插件增量） |
-
-当前验收覆盖 Windows + AstrBot 4.29.3 + Chromium 登录态，并使用模块真实 API 响应验证记忆页数据；Linux、SnowLuma 与完整 OneBot 收发仍应在目标服务器分别验收。
+验收关注重复点击、快速切换、页面往返、隐藏页暂停轮询与旧页面清理。Linux、SnowLuma 与完整 OneBot 收发仍需在目标环境分别验收。
 
 ## 质量与验证
 
-- **Python**：101 项测试通过，另有 31 个子测试通过。
-- **Node**：17 项测试通过。
-- **真实页面**：Windows/Chromium 登录态验证五入口、浅绿首帧、记忆真实统计、模块 bridge 就绪、快速切换与配置页；Linux 实际部署仍待服务器验收。
+- **Python**：102 项测试通过，另有 31 个子测试通过。
+- **Node**：21 项测试通过。
+- **页面**：登录态下检查五入口、浅绿首帧、模块挂载、快速切换与配置页；Linux 实际部署仍待目标环境验收。
 - **配置安全**：并发冲突、密钥脱敏、显式清除、保存/应用、无修改反馈均有回归。
 - **竞态**：快速并发跳转最终停留在最后目标，旧页面结果不覆盖新页面。
-- **构建**：830 个发布文件、79 个生成页面资源；资源清单、ZIP、安装副本和 SHA-256 对照通过。
+- **工作台**：本机登录态下七个模块完成页面读取、桥接握手与界面挂载；图片创作无供应商、QQ 动态 Cookie 失效时显示对应受限状态。
+- **构建**：资源清单、ZIP 和 SHA-256 校验流程可用；具体文件数以构建产物为准。
 
-本地构建产物：`dist/zhiban-0.3.2.zip`（`dist/` 不进入 Git；可从 Release Assets 或本地构建取得）
+本地构建产物：`dist/zhiban-0.3.3.zip`（`dist/` 不进入 Git；可从 Release Assets 或本地构建取得）
 
-发布包 SHA-256：`bf6ac59625d0f72f677222bee8284bd2031cc8210ee15d7edf85266cfc19b4f3`
+发布包 SHA-256：由构建流程生成，具体值以实际产物为准。
 
-## 开发模型
+## AI 辅助开发
 
-AI 开发记录如实区分“辅助编码模型”和“曾参与方案/审查的模型”：
-
-| 阶段 | 模型 | 用途 |
-| --- | --- | --- |
-| 架构整合、代码实现、测试与发布 | **GPT-6 Astra** | 本仓库主要 AI 辅助开发模型 |
-| 页面切换方案检查与优化审查 | **DeepSeek V4.1 Flash** | 导航卡顿方案、问题拆解与改进审查 |
-
-模型记录用于说明开发过程，不代表插件运行时必须调用这些模型。机器人对话、记忆、嵌入、重排序、图片、语音与判断使用的是部署者在 AstrBot 中配置的提供商。
+本项目在开发过程中使用 AI 工具辅助编码、测试与文档整理。运行所需模型由部署者在 AstrBot 中自行配置。
 
 ## 参考项目与移植边界
 
 ### 直接整合的业务项目
 
-以下项目通过服务器快照整合为知伴内部模块，业务能力、名称、版本和上游来源以各模块 `metadata.yaml` 及随附许可证为准。
+以下项目作为上游业务实现整合为知伴内部模块，业务能力、名称、版本和上游来源以各模块 `metadata.yaml` 及随附许可证为准。
 
 | 知伴模块（快照版本） | 上游项目 | 保留内容 | 许可证状态 |
 | --- | --- | --- | --- |
@@ -224,4 +208,4 @@ python package_release.py
 
 不要提交 `data/config`、`data/plugin_data`、模型密钥、供应商凭据、用户记忆或生产数据库。上游页面继续保留自身业务逻辑；知伴负责生命周期、配置、状态、导航与经过清单记录的主题适配。
 
-小版本在本地累积完整回归，重大版本验收后统一推送私有 GitHub 仓库，生产部署另行测试。
+小版本在本地累积回归，重大版本完成验收后按发布流程统一发布；生产部署另行测试。

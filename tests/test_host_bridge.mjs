@@ -61,11 +61,12 @@ async function createBridge() {
     Date,
   });
   const sent = [];
+  const events = [];
   const frame = {
     contentWindow: { postMessage: (message, origin) => sent.push({ message, origin }) },
     dataset: {},
     addEventListener: () => {},
-    dispatchEvent: () => {},
+    dispatchEvent: (event) => events.push(event),
   };
   const detach = window.ZhibanBridge.attachFrame(frame, "meme", "表情互动");
   const message = listeners.get("message");
@@ -74,7 +75,7 @@ async function createBridge() {
     origin: window.location.origin,
     data: { channel: "astrbot-plugin-page", ...data },
   });
-  return { window, parent, calls, frame, sent, detach, sseHandlers: () => sseHandlers, sendFromChild };
+  return { window, parent, calls, frame, sent, events, detach, sseHandlers: () => sseHandlers, sendFromChild };
 }
 
 test("shell broker proxies child API requests through the authenticated Zhiban route", async () => {
@@ -153,4 +154,44 @@ test("shell broker preserves upload, download and SSE lifecycle", async () => {
 
   await bridge.sendFromChild({ kind: "request", requestId: "x", action: "sse:unsubscribe", subscriptionId: "child-1" });
   assert.deepEqual(bridge.calls.at(-1), ["unsubscribe", "host-subscription"]);
+});
+
+test("shell distinguishes bridge readiness, app mount and sanitized app errors", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready" });
+  assert.equal(bridge.frame.dataset.bridgeReady, "true");
+  assert.equal(bridge.frame.dataset.appReady, "false");
+  const token = bridge.sent[0].message.context.appReadyToken;
+  assert.ok(token);
+  assert.deepEqual(bridge.events.map((event) => event.type), ["zhiban:bridge-ready"]);
+
+  await bridge.sendFromChild({ kind: "app:ready", module: "meme", token: "wrong-token" });
+  assert.equal(bridge.frame.dataset.appReady, "false");
+  assert.equal(bridge.events.length, 1);
+
+  await bridge.sendFromChild({ kind: "app:ready", module: "meme", token });
+  assert.equal(bridge.frame.dataset.appReady, "true");
+  assert.deepEqual(bridge.events.map((event) => event.type), ["zhiban:bridge-ready", "zhiban:app-ready"]);
+
+  await bridge.sendFromChild({
+    kind: "app:error",
+    module: "meme",
+    token,
+    stage: "界面挂载",
+    message: "asset_token=secret-token Bearer abc sk-1234567890 failed",
+  });
+  const errorEvent = bridge.events.at(-1);
+  assert.equal(errorEvent.type, "zhiban:app-error");
+  assert.equal(errorEvent.detail.stage, "界面挂载");
+  assert.match(errorEvent.detail.message, /asset_token=\*\*\*/);
+  assert.doesNotMatch(errorEvent.detail.message, /secret-token|abc|1234567890/);
+});
+
+test("detached frames ignore late handshakes and app errors", async () => {
+  const bridge = await createBridge();
+  bridge.detach();
+  await bridge.sendFromChild({ kind: "ready" });
+  await bridge.sendFromChild({ kind: "app:error", module: "meme", stage: "界面挂载", message: "late" });
+  assert.equal(bridge.sent.length, 0);
+  assert.equal(bridge.events.length, 0);
 });

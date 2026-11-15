@@ -22,16 +22,30 @@
   const apiNames = { heart: 'astrbot_plugin_angel_heart', memory: 'astrbot_plugin_livingmemory', meme: 'meme_manager', tts: 'astrbot_plugin_breeze_tts', brush: 'astrbot_plugin_angel_brush', music: 'astrbot_plugin_listen_music', eye: 'astrbot_plugin_angel_eye', qzone: 'astrbot_plugin_qzone_ultra', qqprofile: 'astrbot_plugin_qqprofile' };
   const appPluginName = 'astrbot_plugin_zhiban';
   const moduleScript = document.currentScript || document.querySelector('script[data-module-key]');
-  const embedded = document.documentElement.dataset.zhibanEmbedded === 'true' || new URL(window.location.href).searchParams.get('embedded') === 'frame';
   const moduleKey = moduleScript?.dataset.moduleKey;
-  const viewRoot = new URL('.', moduleScript.src);
   const current = modules.find((item) => item.key === moduleKey);
+  if (!current) return;
+  const viewRoot = new URL('.', moduleScript.src);
+  const rootElement = document.documentElement;
+  const embedded = rootElement.dataset.zhibanEmbedded === 'true'
+    || rootElement.dataset.zhibanHostFrame === 'true'
+    || new URL(window.location.href).searchParams.get('embedded') === 'frame';
   const original = window.AstrBotPluginView || window.AstrBotPluginPage;
-  if (!current || !original) return;
+
+  function moduleContext(context) {
+    return {
+      ...(context || {}),
+      pluginName: apiNames[moduleKey],
+      displayName: '知伴',
+      pageName: moduleKey,
+      pageTitle: current.label,
+      locale: context?.locale || 'zh-CN',
+    };
+  }
 
   function installFirstPaintTheme() {
-    if (!document.documentElement?.dataset) return;
-    document.documentElement.dataset.zhibanEmbedded = embedded ? 'true' : 'shell';
+    if (!rootElement?.dataset) return;
+    rootElement.dataset.zhibanEmbedded = embedded ? 'true' : 'shell';
     if (!document.getElementById('zhiban-first-paint')) {
       const early = document.createElement('style');
       early.id = 'zhiban-first-paint';
@@ -60,46 +74,188 @@
     return path ? 'ui/module_api/' + moduleKey + '/' + path : '';
   }
 
-  function moduleContext(context) {
-    return { ...(context || {}), pluginName: apiNames[moduleKey], displayName: '知伴', pageName: moduleKey, pageTitle: current.label, locale: context?.locale || 'zh-CN' };
+  const contextHandlers = new Set();
+  const pendingRequests = new Map();
+  const sseHandlers = new Map();
+  let context = moduleContext({});
+  let requestCounter = 0;
+  let subscriptionCounter = 0;
+  let bridgeReadySent = false;
+  let appReadySent = false;
+  let resolveReady = null;
+  let rejectReady = null;
+  let readyTimer = null;
+  const READY_TIMEOUT_MS = 12000;
+  const REQUEST_TIMEOUT_MS = 60000;
+  const TRANSFER_TIMEOUT_MS = 120000;
+
+  const readyPromise = new Promise((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+
+  function targetOrigin() {
+    return window.location.origin === 'null' ? '*' : window.location.origin;
   }
 
-  let bridgeReadySent = false;
-  function emitBridgeReady() {
-    if (bridgeReadySent) return;
-    bridgeReadySent = true;
+  function send(kind, payload, transfer) {
+    if (window.parent === window) return;
     window.parent.postMessage(
-      { channel: CHANNEL, kind: 'ready', module: moduleKey },
-      location.origin === 'null' ? '*' : location.origin,
+      { channel: CHANNEL, kind, ...(payload || {}) },
+      targetOrigin(),
+      transfer || [],
     );
   }
 
-  const bridged = Object.create(original);
-  Object.assign(bridged, {
-    async ready() { if (typeof original.ready === 'function') await original.ready(); return moduleContext(original.getContext?.()); },
-    getContext() { return moduleContext(original.getContext?.()); },
-    getLocale() { return moduleContext(original.getContext?.()).locale; },
-    getI18n() { return original.getI18n?.() || {}; },
+  function emitBridgeReady() {
+    if (!embedded || bridgeReadySent) return;
+    bridgeReadySent = true;
+    send('ready', { module: moduleKey });
+  }
+
+  function settleReady(nextContext) {
+    context = moduleContext({ ...context, ...(nextContext || {}) });
+    if (context.appReadyToken) rootElement.dataset.appReadyToken = context.appReadyToken;
+    if (readyTimer) window.clearTimeout(readyTimer);
+    readyTimer = null;
+    if (resolveReady) {
+      const resolve = resolveReady;
+      resolveReady = null;
+      rejectReady = null;
+      resolve(context);
+    }
+    for (const handler of contextHandlers) {
+      try { handler(context); } catch (error) { console.error('[知伴] context handler failed:', error); }
+    }
+  }
+
+  function makeRequest(action, payload, timeoutMs = REQUEST_TIMEOUT_MS) {
+    if (!embedded) throw new Error('当前页面不在知伴工作台内');
+    requestCounter += 1;
+    const requestId = `zhiban_req_${requestCounter}`;
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        pendingRequests.delete(requestId);
+        reject(new Error(`模块请求超时（阶段：${action}）`));
+      }, timeoutMs);
+      pendingRequests.set(requestId, {
+        resolve: (data) => { window.clearTimeout(timer); pendingRequests.delete(requestId); resolve(data); },
+        reject: (error) => { window.clearTimeout(timer); pendingRequests.delete(requestId); reject(error); },
+      });
+      send('request', { requestId, action, ...(payload || {}) });
+    });
+  }
+
+  async function ready() {
+    if (!embedded) {
+      if (typeof original?.ready === 'function') return moduleContext(await original.ready());
+      throw new Error('AstrBot 页面桥接不可用，请从知伴工作台进入');
+    }
+    emitBridgeReady();
+    if (resolveReady && !readyTimer) {
+      readyTimer = window.setTimeout(() => {
+        const reject = rejectReady;
+        resolveReady = null;
+        rejectReady = null;
+        readyTimer = null;
+        reject?.(new Error('知伴工作台桥接超时（阶段：桥接握手）'));
+      }, READY_TIMEOUT_MS);
+    }
+    return readyPromise;
+  }
+
+  const bridged = {
+    async ready() { return ready(); },
+    getContext() { return moduleContext(context); },
+    getLocale() { return moduleContext(context).locale; },
+    getI18n() { return context.i18n || {}; },
     onContext(handler) {
-      if (typeof handler !== 'function' || typeof original.onContext !== 'function') return () => {};
-      return original.onContext((context) => handler(moduleContext(context)));
+      if (typeof handler !== 'function') return () => {};
+      contextHandlers.add(handler);
+      return () => contextHandlers.delete(handler);
     },
-    apiGet(endpoint, params) { const path = proxyEndpoint(endpoint); return path ? original.apiGet(path, params) : Promise.resolve({ token: '' }); },
-    apiPost(endpoint, body) { return original.apiPost(proxyEndpoint(endpoint), body); },
-    upload(endpoint, file) { return original.upload(proxyEndpoint(endpoint), file); },
-    download(endpoint, params, filename) { return original.download(proxyEndpoint(endpoint), params, filename); },
-    subscribeSSE(endpoint, handlers, params) { return original.subscribeSSE(proxyEndpoint(endpoint), handlers, params); },
-    unsubscribeSSE(subscriptionId) { return original.unsubscribeSSE(subscriptionId); },
-  });
+    apiGet(endpoint, params) {
+      const path = modulePath(endpoint);
+      if (!path) return Promise.resolve({ token: '' });
+      if (!embedded) return original.apiGet(proxyEndpoint(endpoint), params);
+      return makeRequest('api:get', { endpoint: path, params });
+    },
+    apiPost(endpoint, body) {
+      const path = modulePath(endpoint);
+      if (!embedded) return original.apiPost(proxyEndpoint(endpoint), body);
+      return makeRequest('api:post', { endpoint: path, body });
+    },
+    async upload(endpoint, file) {
+      const path = modulePath(endpoint);
+      if (!embedded) return original.upload(proxyEndpoint(endpoint), file);
+      const buffer = await file.arrayBuffer();
+      return makeRequest('files:upload', {
+        endpoint: path,
+        fileName: file.name || 'upload.bin',
+        fileType: file.type || 'application/octet-stream',
+        fileLastModified: file.lastModified || Date.now(),
+        fileBuffer: buffer,
+      }, TRANSFER_TIMEOUT_MS);
+    },
+    download(endpoint, params, filename) {
+      const path = modulePath(endpoint);
+      if (!embedded) return original.download(proxyEndpoint(endpoint), params, filename);
+      return makeRequest('files:download', { endpoint: path, params, filename }, TRANSFER_TIMEOUT_MS);
+    },
+    subscribeSSE(endpoint, handlers, params) {
+      const path = modulePath(endpoint);
+      if (!embedded) return original.subscribeSSE(proxyEndpoint(endpoint), handlers, params);
+      subscriptionCounter += 1;
+      const subscriptionId = `zhiban_sub_${subscriptionCounter}`;
+      sseHandlers.set(subscriptionId, handlers || {});
+      return makeRequest('sse:subscribe', { endpoint: path, subscriptionId, params })
+        .catch((error) => { sseHandlers.delete(subscriptionId); throw error; })
+        .then(() => subscriptionId);
+    },
+    async unsubscribeSSE(subscriptionId) {
+      if (!embedded) return original.unsubscribeSSE(subscriptionId);
+      try {
+        return await makeRequest('sse:unsubscribe', { subscriptionId }, 15000);
+      } finally {
+        sseHandlers.delete(subscriptionId);
+      }
+    },
+  };
   window.AstrBotPluginView = window.AstrBotPluginPage = bridged;
 
   window.addEventListener('message', (event) => {
     if (event.source !== window.parent) return;
-    if (event.origin !== window.location.origin && event.origin !== 'null') return;
     const message = event.data;
-    if (!message || message.channel !== CHANNEL || message.kind !== 'response') return;
-    if (!message.ok) {
-      console.error('[知伴] module bridge request failed:', message.error || 'unknown error');
+    if (!message || message.channel !== CHANNEL) return;
+    if (message.kind === 'context') {
+      settleReady(message.context || {});
+      return;
+    }
+    if (message.kind === 'response') {
+      const pending = pendingRequests.get(message.requestId);
+      if (!pending) return;
+      if (message.ok) pending.resolve(message.data);
+      else pending.reject(new Error(message.error || '模块请求失败'));
+      return;
+    }
+    if (message.kind === 'sse_state') {
+      const handlers = sseHandlers.get(message.subscriptionId);
+      if (!handlers) return;
+      if (message.state === 'open') handlers.onOpen?.();
+      else handlers.onError?.();
+      return;
+    }
+    if (message.kind === 'sse_message') {
+      const handlers = sseHandlers.get(message.subscriptionId);
+      if (!handlers) return;
+      let parsed = null;
+      try { parsed = JSON.parse(message.data); } catch { /* Keep raw text. */ }
+      handlers.onMessage?.({
+        raw: message.data,
+        parsed,
+        eventType: message.eventType || 'message',
+        lastEventId: message.lastEventId || '',
+      });
     }
   });
 
@@ -376,7 +532,9 @@
   }
 
   function installEmbeddedTheme() {
-    document.documentElement.dataset.zhibanEmbedded = 'true';
+    if (!embedded) return;
+    rootElement.dataset.zhibanEmbedded = 'true';
+    if (document.getElementById('zhiban-embedded-theme')) return;
     const style = document.createElement('style');
     style.id = 'zhiban-embedded-theme';
     style.textContent = `
@@ -403,23 +561,113 @@
     document.head.append(style);
   }
 
-  function notifyAppReady() {
-    if (!embedded) return;
-    const context = original.getContext?.() || {};
-    const token = context.appReadyToken || document.documentElement.dataset.appReadyToken || (moduleKey + '-' + Date.now());
-    document.documentElement.dataset.appReadyToken = token;
-    document.documentElement.dataset.appReady = 'true';
-    window.parent.postMessage({
-      channel: CHANNEL,
-      kind: 'app:ready',
-      module: moduleKey,
-      token,
-      title: current && current.label ? current.label : '',
-    }, location.origin === 'null' ? '*' : location.origin);
+  function sanitizeDetail(value) {
+    return String(value || '')
+      .replace(/asset_token=[^&\s]+/gi, 'asset_token=***')
+      .replace(/Bearer\s+[^\s]+/gi, 'Bearer ***')
+      .replace(/sk-[A-Za-z0-9_-]{8,}/g, 'sk-***')
+      .slice(0, 240);
   }
 
-  async function start() {
-    const cached = embedded ? null : readStatusCache();
+  function meaningfulUiMounted() {
+    const appRoot = document.querySelector('#app, #root, [data-zhiban-ui]');
+    if (appRoot && appRoot.childElementCount > 0) return true;
+    const main = document.querySelector('main, .shell, .layout');
+    if (main && (main.childElementCount > 0 || (main.textContent || '').trim().length > 20)) return true;
+    const body = document.body;
+    if (!body) return false;
+    return (body.textContent || '').trim().length > 40
+      && Boolean(body.querySelector('button, input, select, textarea, nav, form'));
+  }
+
+  function waitForUiMount(timeoutMs = 15000) {
+    const begin = async () => {
+      if (document.readyState === 'loading') {
+        await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+      }
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        let observer = null;
+        let interval = null;
+        let deadline = null;
+        const cleanup = () => {
+          observer?.disconnect();
+          if (interval) window.clearInterval(interval);
+          if (deadline) window.clearTimeout(deadline);
+        };
+        const finish = () => {
+          if (settled || !meaningfulUiMounted()) return;
+          settled = true;
+          cleanup();
+          const afterPaint = () => resolve();
+          if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(() => window.requestAnimationFrame(afterPaint));
+          } else {
+            window.setTimeout(afterPaint, 0);
+          }
+        };
+        observer = new MutationObserver(finish);
+        if (document.body) observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+        interval = window.setInterval(finish, 250);
+        deadline = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(new Error('业务界面未完成挂载（阶段：界面挂载）'));
+        }, timeoutMs);
+        finish();
+      });
+    };
+    return begin();
+  }
+
+  function sendAppError(stage, message) {
+    if (!embedded) return;
+    send('app:error', {
+      module: moduleKey,
+      token: context.appReadyToken || rootElement.dataset.appReadyToken || '',
+      stage,
+      message: sanitizeDetail(message),
+    });
+  }
+
+  function notifyAppReady() {
+    if (!embedded || appReadySent) return;
+    const token = context.appReadyToken || rootElement.dataset.appReadyToken || (moduleKey + '-' + Date.now());
+    appReadySent = true;
+    rootElement.dataset.appReadyToken = token;
+    rootElement.dataset.appReady = 'true';
+    send('app:ready', {
+      module: moduleKey,
+      token,
+      title: current.label,
+    });
+  }
+
+  window.ZhibanModule = {
+    ready: () => bridged.ready(),
+    notifyReady: notifyAppReady,
+    reportError: sendAppError,
+  };
+
+  async function startEmbedded() {
+    installEmbeddedTheme();
+    try {
+      await bridged.ready();
+    } catch (error) {
+      sendAppError('bridge', error?.message || error);
+      return;
+    }
+    try {
+      await waitForUiMount(15000);
+      notifyAppReady();
+    } catch (error) {
+      sendAppError('mount', error?.message || error);
+    }
+  }
+
+  async function startStandalone() {
+    const cached = readStatusCache();
     let order = modules;
     let states = new Map();
     if (cached && Array.isArray(cached.modules)) {
@@ -429,14 +677,10 @@
         order = [...modules].sort((a, b) => (rank.get(a.key) ?? 999) - (rank.get(b.key) ?? 999));
       }
     }
-    if (!embedded) renderNavigation(order, states);
-    await bridged.ready();
-    if (embedded) {
-      installEmbeddedTheme();
-      notifyAppReady();
-      return;
+    renderNavigation(order, states);
+    if (typeof original?.ready === 'function') {
+      try { await original.ready(); } catch { /* Keep the page usable if the direct SDK is unavailable. */ }
     }
-    if (window.parent !== window && document.documentElement.dataset.zhibanHostFrame === 'true') return;
     if (cached) return;
     try {
       const result = await original.apiGet('ui/status');
@@ -452,6 +696,7 @@
   }
 
   emitBridgeReady();
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => void start(), { once: true });
-  else void start();
+  const start = () => { void (embedded ? startEmbedded() : startStandalone()); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+  else start();
 })();

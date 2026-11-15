@@ -318,26 +318,59 @@
     .module-frame-host .module-frame { height: 100%; min-height: 520px; }
     .module-frame-loading {
       position: absolute;
-      inset: 0;
+      top: 0;
+      left: 0;
+      right: 0;
       z-index: 2;
-      display: grid;
-      place-content: center;
-      justify-items: center;
-      gap: 11px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
       border: 1px solid var(--zb-line);
-      border-radius: var(--zb-radius);
-      background: var(--zb-bg);
+      border-radius: var(--zb-radius) var(--zb-radius) 0 0;
+      background: color-mix(in srgb, var(--zb-soft) 34%, var(--zb-white));
       color: var(--zb-muted);
       font-size: 12px;
       transition: opacity .14s ease;
     }
+    .module-frame-host.bridge-ready .module-frame-loading { background: color-mix(in srgb, var(--zb-soft) 55%, var(--zb-white)); color: var(--zb-green); }
     .module-frame-host.loaded .module-frame-loading { pointer-events: none; opacity: 0; }
     .module-frame-host.failed .module-frame-loading { display: none; }
-    .module-frame-spinner { width: 22px; height: 22px; border: 2px solid var(--zb-line); border-top-color: var(--zb-green); border-radius: 50%; animation: zb-spin .8s linear infinite; }
+    .module-frame-spinner { width: 18px; height: 18px; flex: 0 0 18px; border: 2px solid var(--zb-line); border-top-color: var(--zb-green); border-radius: 50%; animation: zb-spin .8s linear infinite; }
     @keyframes zb-spin { to { transform: rotate(360deg); } }
+    .module-frame-skeleton {
+      position: absolute;
+      inset: 52px 0 0;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: auto auto minmax(140px, 1fr);
+      gap: 14px;
+      padding: 24px;
+      overflow: hidden;
+      border: 1px solid var(--zb-line);
+      border-radius: var(--zb-radius);
+      background: var(--zb-white);
+    }
+    .module-skeleton-line,
+    .module-skeleton-card {
+      display: block;
+      border-radius: 9px;
+      background: linear-gradient(100deg, var(--zb-bg) 20%, color-mix(in srgb, var(--zb-soft) 48%, var(--zb-white)) 42%, var(--zb-bg) 64%);
+      background-size: 220% 100%;
+      animation: zb-skeleton 1.25s ease-in-out infinite;
+    }
+    .module-skeleton-line { height: 14px; border-radius: 999px; }
+    .module-skeleton-line.wide { grid-column: 1 / -1; width: min(72%, 620px); height: 20px; }
+    .module-skeleton-line.medium { grid-column: 1 / 2; width: 70%; }
+    .module-skeleton-card { min-height: 140px; }
+    @keyframes zb-skeleton { from { background-position: 120% 0; } to { background-position: -20% 0; } }
+    .module-frame-host.loaded .module-frame-skeleton { visibility: hidden; opacity: 0; transition: opacity .12s ease; }
+    .module-frame-host.failed .module-frame-skeleton { visibility: hidden; }
     .module-frame-failure { position: absolute; inset: 0; z-index: 3; display: grid; align-content: center; justify-items: start; gap: 9px; padding: 24px; border: 1px solid var(--zb-danger); border-radius: var(--zb-radius); background: var(--zb-white); }
     .module-frame-failure strong { color: var(--zb-danger); }
     .module-frame-failure p { max-width: 620px; color: var(--zb-muted); }
+    .module-frame-failure .module-frame-stage { color: var(--zb-warn); font-size: 12px; }
     .module-frame {
       display: block;
       width: 100%;
@@ -532,6 +565,7 @@
       ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
       html[data-navigating="true"] body::after { animation: none !important; }
       .module-frame-spinner { animation: none !important; }
+      .module-skeleton-line, .module-skeleton-card { animation: none !important; }
       *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
     }
   </style>

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path, PurePosixPath
 
@@ -147,11 +148,39 @@ def build_views(
                 html = source.read_text(encoding="utf-8")
                 depth = 2 + len(PurePosixPath(relative_inside).parent.parts)
                 bridge_src = "../" * depth + "module_bridge.js"
+                reason = BRIDGE_REASON
+                # The meme upstream root is only a redirect to a_manage. A
+                # sandboxed srcdoc cannot follow that navigation reliably, so
+                # materialize the management page at the module entry and keep
+                # its relative assets anchored to a_manage with a base URL.
+                if (
+                    module == "meme"
+                    and relative_inside == "index.html"
+                    and (source_root / "a_manage" / "index.html").is_file()
+                ):
+                    source = source_root / "a_manage" / "index.html"
+                    source_path = PurePosixPath(
+                        *source_parts, "a_manage", "index.html"
+                    ).as_posix()
+                    html = source.read_text(encoding="utf-8")
+                    bridge_src = "../../../module_bridge.js"
+                    reason = (
+                        "entry redirect materialized as the management page with "
+                        "a controlled base URL for sandboxed embedding"
+                    )
                 html = prepare_module_ui_html(
                     html, source_parts[0], module_bridge_src=bridge_src
                 )
+                if module == "meme" and relative_inside == "index.html":
+                    html = re.sub(
+                        r"<head\b[^>]*>",
+                        lambda match: match.group(0) + '<base href="./a_manage/">',
+                        html,
+                        count=1,
+                        flags=re.IGNORECASE,
+                    )
                 destination.write_text(html, encoding="utf-8", newline="")
-                adaptation = {"source": source_path, "reason": BRIDGE_REASON}
+                adaptation = {"source": source_path, "reason": reason}
             else:
                 registered = _non_html_adaptation(
                     module, source_parts, relative_inside

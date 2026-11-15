@@ -90,7 +90,7 @@ class BuildViewsTests(unittest.TestCase):
         self.assertNotIn("navigatePage(new URL(`modules/${item.page}/index.html`", app_source)
         self.assertIn("frame.setAttribute(\"sandbox\", \"allow-scripts allow-forms allow-downloads\")", app_source)
         self.assertIn("frame.srcdoc = rewriteModuleDocument(source, pageUrl.href, item.key)", app_source)
-        self.assertIn("const sdkUrl = new URL(\"/api/plugin/page/bridge-sdk.js\", location.origin)", app_source)
+        self.assertNotIn("const sdkUrl = new URL(\"/api/plugin/page/bridge-sdk.js\", location.origin)", app_source)
         self.assertIn("const bridgeSrc = new URL(\"./module_bridge.js\", document.baseURI).href", app_source)
         self.assertIn("zhiban-panel-bootstrap", app_source)
         self.assertIn('documentElement.dataset.zhibanHostFrame=\"true\"', app_source)
@@ -99,6 +99,10 @@ class BuildViewsTests(unittest.TestCase):
         self.assertIn("pageUrl.searchParams.set(\"zhiban_panel\", \"1\")", app_source)
         self.assertIn("fetch(pageUrl.href", app_source)
         self.assertIn("zhiban:app-ready", app_source)
+        self.assertIn("zhiban:app-error", app_source)
+        self.assertIn("zhiban:bridge-ready", app_source)
+        self.assertIn("activeModuleBridgeTimer", app_source)
+        self.assertIn("activeModuleAppTimer", app_source)
         bridge_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "module_bridge.js").read_text(encoding="utf-8")
         self.assertIn("zhiban-shell-style", bridge_source)
         self.assertIn("配置当前模块", bridge_source)
@@ -112,15 +116,16 @@ class BuildViewsTests(unittest.TestCase):
         self.assertNotIn('key: "filter"', app_source)
         self.assertFalse((Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "logos" / "filter.svg").exists())
 
-    def test_readmes_document_models_and_integrated_upstreams(self):
+    def test_readmes_document_ai_policy_and_integrated_upstreams(self):
         root = Path(__file__).parents[1]
         readmes = (
             (root / "README.md").read_text(encoding="utf-8"),
             (root / "astrbot_plugin_zhiban" / "README.md").read_text(encoding="utf-8"),
         )
         for source in readmes:
-            self.assertIn("GPT-6 Astra", source)
-            self.assertIn("DeepSeek V4.1 Flash", source)
+            self.assertIn("本项目在开发过程中使用 AI 工具辅助编码、测试与文档整理", source)
+            self.assertNotIn("GPT-6 Astra", source)
+            self.assertNotIn("DeepSeek V4.1 Flash", source)
             self.assertIn("OneBot v11", source)
             for repo in (
                 "astrbot_plugin_angel_heart",
@@ -209,13 +214,25 @@ class BuildViewsTests(unittest.TestCase):
                     generated = view_root / "modules" / module / relative
                     self.assertTrue(generated.is_file(), f"Missing copied asset: {module}/{relative}")
                     if source.name.lower() == "index.html":
+                        expected_source = source
                         depth = 2 + len(relative.parent.parts)
                         bridge_src = "../" * depth + "module_bridge.js"
+                        if module == "meme" and relative.as_posix() == "index.html":
+                            expected_source = source_root / "a_manage" / "index.html"
+                            bridge_src = "../../../module_bridge.js"
                         expected = build_views_module.prepare_module_ui_html(
-                            source.read_text(encoding="utf-8"),
+                            expected_source.read_text(encoding="utf-8"),
                             source_parts[0],
                             module_bridge_src=bridge_src,
                         )
+                        if module == "meme" and relative.as_posix() == "index.html":
+                            expected = re.sub(
+                                r"<head\b[^>]*>",
+                                lambda match: match.group(0) + '<base href="./a_manage/">',
+                                expected,
+                                count=1,
+                                flags=re.IGNORECASE,
+                            )
                         self.assertEqual(generated.read_text(encoding="utf-8"), expected)
                     else:
                         self.assertEqual(generated.read_bytes(), source.read_bytes())

@@ -41,6 +41,14 @@
 
   const trustedChildOrigins = new WeakMap();
 
+  function safeDetail(value) {
+    return String(value || "")
+      .replace(/asset_token=[^&\s]+/gi, "asset_token=***")
+      .replace(/Bearer\s+[^\s]+/gi, "Bearer ***")
+      .replace(/sk-[A-Za-z0-9_-]{8,}/g, "sk-***")
+      .slice(0, 240);
+  }
+
   function post(frame, message) {
     if (!frame?.contentWindow) return;
     // Child documents use the host-mandated sandbox without allow-same-origin.
@@ -176,6 +184,7 @@
     if (!found) return;
     if (event.origin !== "null" && event.origin !== window.location.origin) return;
     const { frame, state } = found;
+    if (state.destroyed) return;
     trustedChildOrigins.set(frame, true);
     const message = event.data;
     if (!message || message.channel !== CHANNEL) return;
@@ -183,13 +192,24 @@
       if (message.module !== state.module) return;
       if (message.token && state.appReadyToken && message.token !== state.appReadyToken) return;
       state.appReady = true;
+      frame.dataset.appReady = "true";
       frame.dispatchEvent(new CustomEvent("zhiban:app-ready", { detail: { module: message.module, token: message.token } }));
       return;
     }
+    if (message.kind === "app:error") {
+      if (message.module !== state.module) return;
+      if (message.token && state.appReadyToken && message.token !== state.appReadyToken) return;
+      state.lastError = { stage: safeDetail(message.stage), message: safeDetail(message.message) };
+      frame.dispatchEvent(new CustomEvent("zhiban:app-error", { detail: state.lastError }));
+      return;
+    }
     if (message.kind === "ready") {
+      const firstReady = !state.bridgeReady;
       state.bridgeReady = true;
       frame.dataset.bridgeReady = "true";
-      frame.dispatchEvent(new CustomEvent("zhiban:bridge-ready", { detail: { module: state.module } }));
+      if (firstReady) {
+        frame.dispatchEvent(new CustomEvent("zhiban:bridge-ready", { detail: { module: state.module } }));
+      }
       const parentContext = bridge()?.getContext?.() || {};
       post(frame, {
         channel: CHANNEL,
@@ -232,14 +252,17 @@
     attachFrame(frame, module, label) {
       const previous = frames.get(frame);
       if (previous) void cleanupFrame(frame, previous);
-      const state = { module, label, subscriptions: new Map(), loaded: false, bridgeReady: false, appReady: false, appReadyToken: `${module}-${Date.now()}` };
+      const state = { module, label, subscriptions: new Map(), loaded: false, bridgeReady: false, appReady: false, destroyed: false, lastError: null, appReadyToken: `${module}-${Date.now()}` };
       frames.set(frame, state);
       frame.dataset.bridgeReady = "false";
+      frame.dataset.appReady = "false";
       frame.addEventListener("load", () => {
+        if (state.destroyed) return;
         if (state.loaded) void cleanupFrame(frame, state);
         state.loaded = true;
       });
       return () => {
+        state.destroyed = true;
         if (frames.get(frame) === state) frames.delete(frame);
         void cleanupFrame(frame, state);
       };

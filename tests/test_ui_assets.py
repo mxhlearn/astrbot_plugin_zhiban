@@ -57,11 +57,21 @@ class ModuleUiAssetTests(unittest.TestCase):
         source = '<html><head><script src="./app.js"></script></head><body></body></html>'
         result = ui_assets.prepare_module_ui_html(source, "astrbot_plugin_angel_heart")
         self.assertLess(result.index("zhiban-head-theme"), result.index('src="./app.js"'))
-        self.assertLess(result.index("zhiban-shell-bootstrap"), result.index('src="./app.js"'))
+        self.assertLess(result.index("zhiban-embed-bootstrap"), result.index('src="./app.js"'))
         self.assertIn('data-module-key="heart"', result)
         self.assertLess(result.index("module_bridge.js"), result.index('src="./app.js"'))
         self.assertIn('get("embedded")==="frame"', result)
         self.assertIn("module_bridge.js", result)
+        self.assertIn("zhibanEmbedded===\"true\"", result)
+
+    def test_generated_bootstrap_is_idempotent_and_preserves_embedded_marker(self):
+        source = '<html><head><script src="./app.js"></script></head><body></body></html>'
+        once = ui_assets.prepare_module_ui_html(source, "astrbot_plugin_angel_brush")
+        twice = ui_assets.prepare_module_ui_html(once, "astrbot_plugin_angel_brush")
+        self.assertEqual(twice.count('id="zhiban-embed-bootstrap"'), 1)
+        self.assertEqual(twice.count('id="zhiban-module-adapter"'), 1)
+        self.assertEqual(twice.count('id="zhiban-head-theme"'), 1)
+        self.assertIn("zhibanEmbedded===\"true\"", twice)
 
     def test_nested_module_bridge_uses_post_message_contract_for_sandboxed_frames(self):
         script = ui_assets.legacy_bridge_script("astrbot_plugin_meme_manager")

@@ -63,7 +63,8 @@ let draftGuard = null;
 let navigationStarted = false;
 let activeModuleFrame = null;
 let activeModuleFrameDetach = null;
-let activeModuleReadyTimer = null;
+let activeModuleBridgeTimer = null;
+let activeModuleAppTimer = null;
 let moduleFrameSequence = 0;
 let activeModuleFetch = null;
 let statusRequestSequence = 0;
@@ -233,19 +234,32 @@ function createGroupIcon(name) {
   return svg;
 }
 
+function reconcileChildren(container, nodes) {
+  nodes.forEach((node, index) => {
+    const current = container.children[index];
+    if (current !== node) container.insertBefore(node, current || null);
+  });
+  while (container.children.length > nodes.length) container.lastElementChild.remove();
+}
+
 function renderPrimaryNavigation() {
-  primaryNav.replaceChildren(...GROUPS.map((group) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "primary-nav-item";
-    button.dataset.group = group.key;
+  const existing = new Map([...primaryNav.children].map((node) => [node.dataset.group, node]));
+  const nodes = GROUPS.map((group) => {
+    let button = existing.get(group.key);
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.className = "primary-nav-item";
+      button.dataset.group = group.key;
+      const label = document.createElement("span");
+      label.textContent = group.label;
+      button.append(createGroupIcon(group.key), label);
+      button.addEventListener("click", () => selectGroup(button.dataset.group));
+    }
     button.setAttribute("aria-current", group.key === activeGroup ? "page" : "false");
-    const label = document.createElement("span");
-    label.textContent = group.label;
-    button.append(createGroupIcon(group.key), label);
-    button.addEventListener("click", () => selectGroup(group.key));
     return button;
-  }));
+  });
+  reconcileChildren(primaryNav, nodes);
 }
 
 function groupModules(groupKey = activeGroup) {
@@ -260,22 +274,28 @@ function renderModuleTabs() {
   const entries = groupModules();
   if (activeGroup === "overview" || entries.length <= 1) {
     groupTabs.hidden = true;
-    moduleTabs.replaceChildren();
+    if (moduleTabs.children.length) moduleTabs.replaceChildren();
     return;
   }
   groupTabs.hidden = false;
-  moduleTabs.replaceChildren(...entries.map((item) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "module-tab";
-    button.dataset.module = item.key;
-    button.setAttribute("aria-pressed", String(item.key === activeKey));
-    button.textContent = item.label;
+  const existing = new Map([...moduleTabs.children].map((node) => [node.dataset.module, node]));
+  const nodes = entries.map((item) => {
+    let button = existing.get(item.key);
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.className = "module-tab";
+      button.dataset.module = item.key;
+      button.addEventListener("click", () => selectModule(button.dataset.module, true));
+    }
+    const pressed = String(item.key === activeKey);
+    if (button.getAttribute("aria-pressed") !== pressed) button.setAttribute("aria-pressed", pressed);
+    if (button.textContent !== item.label) button.textContent = item.label;
     const state = moduleStates.get(item.key);
     button.title = `${item.label} · ${statusLabel(state?.state)} · ${readinessLabel(state)}`;
-    button.addEventListener("click", () => selectModule(item.key, true));
     return button;
-  }));
+  });
+  reconcileChildren(moduleTabs, nodes);
 }
 
 function renderNavigation() {
@@ -419,12 +439,18 @@ function renderGlobalOverview() {
   refresh.disabled = false;
 }
 
+function clearModuleStageTimers() {
+  if (activeModuleBridgeTimer) clearTimeout(activeModuleBridgeTimer);
+  if (activeModuleAppTimer) clearTimeout(activeModuleAppTimer);
+  activeModuleBridgeTimer = null;
+  activeModuleAppTimer = null;
+}
+
 function detachModuleFrame() {
   moduleFrameSequence += 1;
   if (activeModuleFetch) activeModuleFetch.abort();
   activeModuleFetch = null;
-  if (activeModuleReadyTimer) clearTimeout(activeModuleReadyTimer);
-  activeModuleReadyTimer = null;
+  clearModuleStageTimers();
   if (typeof activeModuleFrameDetach === "function") activeModuleFrameDetach();
   activeModuleFrameDetach = null;
   if (activeModuleFrame) {
@@ -433,18 +459,24 @@ function detachModuleFrame() {
   }
 }
 
-function showFrameFailure(host, item, reason = "") {
+function showFrameFailure(host, item, reason = "", stage = "") {
   if (!host?.isConnected) return;
+  clearModuleStageTimers();
+  host.classList.remove("ready", "loaded", "bridge-ready");
   host.classList.add("failed");
+  host.dataset.stage = "failed";
+  host.querySelector(".module-frame-failure")?.remove();
   const failure = element("div", "module-frame-failure");
+  failure.setAttribute("role", "alert");
   failure.append(
     element("strong", "", `${item.label}暂时无法加载`),
     element("p", "", reason || "模块页面未完成初始化。可以重试，或打开配置检查状态。"),
   );
+  if (stage) failure.append(element("p", "module-frame-stage", `阶段：${stage}`));
   const actions = element("div", "action-row");
   const retry = element("button", "button primary", "重新加载");
   retry.type = "button";
-  retry.addEventListener("click", () => createModuleFrameElement(item));
+  retry.addEventListener("click", () => { void createModuleFrameElement(item); });
   const config = element("button", "button", "打开配置");
   config.type = "button";
   config.addEventListener("click", () => setView("settings"));
@@ -466,12 +498,31 @@ async function createModuleFrameElement(item) {
   const sequence = moduleFrameSequence;
   const host = element("section", "module-frame-host");
   host.dataset.module = item.key;
+  host.dataset.stage = "fetching";
   const loading = element("div", "module-frame-loading");
   loading.setAttribute("role", "status");
-  loading.append(element("span", "module-frame-spinner"), element("span", "", `正在打开${item.label}`));
-  host.append(loading);
+  const loadingText = element("span", "module-frame-loading-text", `正在打开${item.label}`);
+  loading.append(element("span", "module-frame-spinner"), loadingText);
+  const skeleton = element("div", "module-frame-skeleton");
+  skeleton.setAttribute("aria-hidden", "true");
+  skeleton.append(
+    element("span", "module-skeleton-line wide"),
+    element("span", "module-skeleton-line medium"),
+    element("span", "module-skeleton-card"),
+    element("span", "module-skeleton-card"),
+    element("span", "module-skeleton-card"),
+  );
+  host.append(loading, skeleton);
   workspace.replaceChildren(host);
   refresh.disabled = true;
+
+  const controller = new AbortController();
+  activeModuleFetch = controller;
+  let fetchTimedOut = false;
+  const fetchTimer = setTimeout(() => {
+    fetchTimedOut = true;
+    controller.abort();
+  }, 12000);
   try {
     const pageUrl = new URL(`modules/${item.page}/index.html`, new URL("./", document.baseURI));
     pageUrl.searchParams.set("embedded", "frame");
@@ -479,13 +530,13 @@ async function createModuleFrameElement(item) {
     pageUrl.searchParams.set("theme", document.documentElement.dataset.theme || "light");
     const assetToken = new URL(location.href).searchParams.get("asset_token");
     if (assetToken) pageUrl.searchParams.set("asset_token", assetToken);
-    const controller = new AbortController();
-    activeModuleFetch = controller;
     const response = await fetch(pageUrl.href, { credentials: "same-origin", cache: "no-store", signal: controller.signal });
+    clearTimeout(fetchTimer);
     if (activeModuleFetch === controller) activeModuleFetch = null;
     if (!response.ok) throw new Error(`模块页面返回 HTTP ${response.status}`);
     const source = await response.text();
     if (sequence !== moduleFrameSequence || !host.isConnected) return;
+    host.dataset.stage = "bridge_wait";
     const frame = document.createElement("iframe");
     frame.className = "module-frame";
     frame.title = `${item.label}工作台`;
@@ -495,50 +546,80 @@ async function createModuleFrameElement(item) {
     frame.dataset.module = item.key;
     activeModuleFrame = frame;
     activeModuleFrameDetach = window.ZhibanBridge?.attachFrame(frame, item.key, item.label) || null;
-    const markLoaded = () => {
+
+    const markBridgeReady = () => {
       if (sequence !== moduleFrameSequence || activeModuleFrame !== frame) return;
-      if (activeModuleReadyTimer) clearTimeout(activeModuleReadyTimer);
-      activeModuleReadyTimer = null;
+      clearModuleStageTimers();
+      host.classList.remove("failed");
+      host.classList.add("bridge-ready");
+      host.dataset.stage = "app_mounting";
+      host.querySelector(".module-frame-failure")?.remove();
+      frame.dataset.bridgeReady = "true";
+      loadingText.textContent = `正在初始化${item.label}…`;
+      activeModuleAppTimer = setTimeout(() => {
+        if (sequence !== moduleFrameSequence || activeModuleFrame !== frame) return;
+        showFrameFailure(host, item, "模块桥接已连接，但业务界面未完成挂载。可以重试，或打开配置检查状态。", "界面挂载");
+      }, 15000);
+    };
+
+    const markAppReady = () => {
+      if (sequence !== moduleFrameSequence || activeModuleFrame !== frame) return;
+      clearModuleStageTimers();
+      host.classList.remove("failed", "bridge-ready");
       host.classList.add("ready", "loaded");
+      host.dataset.stage = "ready";
+      host.querySelector(".module-frame-failure")?.remove();
       frame.dataset.appReady = "true";
+      loadingText.textContent = `${item.label}已就绪`;
       refresh.disabled = false;
-      // Refresh now that the module's own bridge is live; a stale pre-frame
-      // status refresh must not leave the parent controls disabled.
       void refreshStatus({ background: true });
     };
-    frame.addEventListener("zhiban:app-ready", markLoaded, { once: true });
-    frame.addEventListener("zhiban:bridge-ready", markLoaded, { once: true });
-    activeModuleReadyTimer = setTimeout(() => {
+
+    frame.addEventListener("zhiban:bridge-ready", markBridgeReady, { once: true });
+    frame.addEventListener("zhiban:app-ready", markAppReady, { once: true });
+    frame.addEventListener("zhiban:app-error", (event) => {
       if (sequence !== moduleFrameSequence || activeModuleFrame !== frame) return;
-      host.classList.add("ready", "failed");
-      showFrameFailure(host, item, "模块页面已读取，但业务界面未完成初始化。");
-      refresh.disabled = false;
-    }, 20000);
+      const detail = event.detail || {};
+      showFrameFailure(
+        host,
+        item,
+        detail.message || "模块初始化失败。可以重试，或打开配置检查状态。",
+        detail.stage || "模块初始化",
+      );
+    });
+    activeModuleBridgeTimer = setTimeout(() => {
+      if (sequence !== moduleFrameSequence || activeModuleFrame !== frame) return;
+      showFrameFailure(host, item, "模块页面已读取，但桥接未连接。可以重试，或打开配置检查状态。", "桥接握手");
+    }, 10000);
+
     frame.srcdoc = rewriteModuleDocument(source, pageUrl.href, item.key);
     host.append(frame);
     refresh.disabled = false;
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") return;
+    clearTimeout(fetchTimer);
+    if (activeModuleFetch === controller) activeModuleFetch = null;
+    if (error instanceof DOMException && error.name === "AbortError") {
+      if (fetchTimedOut && sequence === moduleFrameSequence && host.isConnected) {
+        showFrameFailure(host, item, "模块页面读取超时。请检查 Dashboard 登录态后重试。", "页面读取");
+      }
+      return;
+    }
     if (sequence !== moduleFrameSequence || !host.isConnected) return;
-    host.classList.add("ready", "failed");
-    showFrameFailure(host, item, moduleErrorText(error));
+    showFrameFailure(host, item, moduleErrorText(error), "页面读取");
     refresh.disabled = false;
   }
 }
 
 function rewriteModuleDocument(source, documentUrl, moduleKey) {
-  const moduleBase = new URL("./", documentUrl);
+  const declaredBase = source.match(/<base\b[^>]*\bhref=["']([^"']+)["']/i)?.[1];
+  const moduleBase = new URL(declaredBase || "./", documentUrl);
   const bridgeSrc = new URL("./module_bridge.js", document.baseURI).href;
-  const assetToken = new URL(location.href).searchParams.get("asset_token");
-  const sdkUrl = new URL("/api/plugin/page/bridge-sdk.js", location.origin);
-  if (assetToken) sdkUrl.searchParams.set("asset_token", assetToken);
-  sdkUrl.searchParams.set("theme", document.documentElement.dataset.theme || "light");
-  const panelBootstrap = '<script id="zhiban-panel-bootstrap">document.documentElement.dataset.zhibanEmbedded="true";document.documentElement.dataset.zhibanHostFrame="true";</script>';
+  const panelBootstrap = '<script id="zhiban-panel-bootstrap">document.documentElement.dataset.zhibanEmbedded="true";document.documentElement.dataset.zhibanHostFrame="true";(function(){var NativeURL=window.URL;if(!NativeURL||window.__zhibanUrlPatched)return;window.__zhibanUrlPatched=true;window.URL=new Proxy(NativeURL,{construct:function(target,args){if(args.length>1&&typeof args[1]==="string"&&/^about:/i.test(args[1]))args[1]=document.baseURI;return Reflect.construct(target,args);}});var nativeReplace=history.replaceState.bind(history);history.replaceState=function(state,title,url){try{if(typeof url==="string"&&/^about:/i.test(url))url=new NativeURL(url.replace(/^about:srcdoc/,""),document.baseURI).href;return nativeReplace(state,title,url);}catch(error){return nativeReplace(state,title);}};})();</script>';
   return source
     .replace(/<base\b[^>]*>/gi, "")
+    .replace(/<script\b[^>]*\bid=["']zhiban-(?:page-theme-bootstrap|shell-bootstrap|embed-bootstrap|panel-bootstrap|module-adapter)["'][^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<script\b[^>]*\bsrc=["'][^"']*\/api\/plugin\/page\/bridge-sdk\.js[^"']*["'][^>]*>\s*<\/script>/gi, "")
-    .replace(/<script\b[^>]*\bsrc=["'][^"']*\/?module_bridge\.js[^"']*["'][^>]*>\s*<\/script>/gi, "")
-    .replace(/<head\b[^>]*>/i, (head) => `${head}<base href="${moduleBase.href}">${panelBootstrap}<script src="${sdkUrl.href}"></script><script id="zhiban-module-adapter" src="${bridgeSrc}" data-module-key="${moduleKey}"></script>`);
+    .replace(/<head\b[^>]*>/i, (head) => `${head}<base href="${moduleBase.href}">${panelBootstrap}<script id="zhiban-module-adapter" src="${bridgeSrc}" data-module-key="${moduleKey}"></script>`);
 }
 
 function renderProcessModule(item, state) {
@@ -561,13 +642,22 @@ function renderProcessModule(item, state) {
   refresh.disabled = false;
 }
 
+function currentFrameMatches(item) {
+  return Boolean(
+    activeModuleFrame
+    && activeModuleFrame.dataset.module === item.key
+    && activeModuleFrame.isConnected
+    && workspace.firstElementChild?.classList.contains("module-frame-host")
+  );
+}
+
 function renderWorkbench(item = moduleById(activeKey)) {
   const state = moduleStates.get(item.key);
   if (item.page && (!state || state.state === "running")) {
     settingsWorkspace.hidden = true;
     settingsWorkspace.replaceChildren();
     workspace.hidden = false;
-    createModuleFrameElement(item);
+    if (!currentFrameMatches(item)) void createModuleFrameElement(item);
     return;
   }
   detachModuleFrame();
@@ -1495,54 +1585,75 @@ function scheduleStatusPoll() {
   }, hasStarting ? 1500 : 5000);
 }
 
+function withRequestTimeout(promise, timeoutMs, message) {
+  let timer = null;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 async function refreshStatus({ background = false } = {}) {
   if (document.visibilityState === "hidden") return;
-  if (statusRequestInFlight) return statusRequestInFlight;
   const requestId = ++statusRequestSequence;
-  statusRequestInFlight = (async () => {
-  try {
-    const data = await callSettingsApi("GET", "ui/status");
-    if (requestId !== statusRequestSequence || document.visibilityState === "hidden") return;
-    schedulerStatus = data.scheduler || null;
-    writeStatusCache(data);
-    const previousStates = new Map(moduleStates);
-    const previousOrder = modules.map((item) => item.key).join("|");
-    const nextModules = orderModules(moduleCatalog, data.menu_order);
-    const nextStates = new Map((data.modules || []).map((item) => [item.key, item]));
-    const changedKeys = new Set();
-    for (const key of new Set([...previousStates.keys(), ...nextStates.keys()])) {
-      if (stateSnapshot(previousStates.get(key)) !== stateSnapshot(nextStates.get(key))) changedKeys.add(key);
+  const pending = (async () => {
+    try {
+      const data = await withRequestTimeout(
+        callSettingsApi("GET", "ui/status"),
+        12000,
+        "状态读取超时",
+      );
+      if (requestId !== statusRequestSequence || document.visibilityState === "hidden") return;
+      schedulerStatus = data.scheduler || null;
+      writeStatusCache(data);
+      const previousStates = new Map(moduleStates);
+      const previousOrder = modules.map((item) => item.key).join("|");
+      const nextModules = orderModules(moduleCatalog, data.menu_order);
+      const nextStates = new Map((data.modules || []).map((item) => [item.key, item]));
+      const changedKeys = new Set();
+      for (const key of new Set([...previousStates.keys(), ...nextStates.keys()])) {
+        if (stateSnapshot(previousStates.get(key)) !== stateSnapshot(nextStates.get(key))) changedKeys.add(key);
+      }
+      modules = nextModules;
+      moduleStates.clear();
+      for (const [key, item] of nextStates) moduleStates.set(key, item);
+      const orderChanged = previousOrder !== modules.map((item) => item.key).join("|");
+      if (orderChanged || changedKeys.size) renderNavigation();
+      applyHeader();
+      const activeItem = moduleById(activeKey);
+      const currentState = moduleStates.get(activeItem.key);
+      const shouldFrame = activeItem.page && (!currentState || currentState.state === "running");
+      if (activeView === "overview" && (!background || changedKeys.size)) {
+        renderGlobalOverview();
+      } else if (activeView === "workbench" && changedKeys.has(activeItem.key)) {
+        if (shouldFrame && currentFrameMatches(activeItem)) {
+          // The mounted frame already represents the current module. A status
+          // poll must not rebuild it and interrupt in-progress drafts.
+        } else {
+          renderWorkbench(activeItem);
+        }
+      } else if (activeView === "workbench" && activeItem.groupKey === "chat") {
+        updateSchedulerSummary();
+      }
+      scheduleStatusPoll();
+    } catch (error) {
+      if (requestId !== statusRequestSequence) return;
+      status.textContent = "状态读取失败";
+      status.className = "status failed";
+      if (activeView === "overview") {
+        workspace.replaceChildren(element("p", "empty-state error", "无法读取运行状态。请刷新页面或检查 Dashboard 登录态。"));
+      }
+      scheduleStatusPoll();
+    } finally {
+      if (statusRequestInFlight === pending) statusRequestInFlight = null;
     }
-    modules = nextModules;
-    moduleStates.clear();
-    for (const [key, item] of nextStates) moduleStates.set(key, item);
-    const orderChanged = previousOrder !== modules.map((item) => item.key).join("|");
-    if (orderChanged || changedKeys.size) renderNavigation();
-    applyHeader();
-    const activeItem = moduleById(activeKey);
-    const previousLifecycle = previousStates.get(activeItem.key)?.state;
-    const currentLifecycle = moduleStates.get(activeItem.key)?.state;
-    if (activeView === "overview" && (!background || changedKeys.size)) {
-      renderGlobalOverview();
-    } else if (activeView === "workbench" && changedKeys.has(activeItem.key)
-      && previousLifecycle !== currentLifecycle) {
-      renderWorkbench(activeItem);
-    } else if (activeView === "workbench" && activeItem.groupKey === "chat") {
-      updateSchedulerSummary();
-    }
-    scheduleStatusPoll();
-  } catch {
-    status.textContent = "状态读取失败";
-    status.className = "status failed";
-    if (activeView === "overview") {
-      workspace.replaceChildren(element("p", "empty-state error", "无法读取运行状态。请刷新页面或检查 Dashboard 登录态。"));
-    }
-    scheduleStatusPoll();
-  } finally {
-    statusRequestInFlight = null;
-  }
   })();
-  return statusRequestInFlight;
+  statusRequestInFlight = pending;
+  return pending;
 }
 
 function updateSchedulerSummary(root = settingsWorkspace) {
