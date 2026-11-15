@@ -1,6 +1,7 @@
 """Materialize upstream module pages under AstrBot's signed 知伴 view."""
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from pathlib import Path, PurePosixPath
@@ -14,13 +15,55 @@ PLUGIN_ROOT = ROOT / "astrbot_plugin_zhiban"
 VIEW_ROOT = PLUGIN_ROOT / "views" / "知伴"
 OUTPUT_ROOT = VIEW_ROOT / "modules"
 MANIFEST = VIEW_ROOT / ".zhiban_generated_assets.json"
+BRIDGE_REASON = "authenticated SDK and module bridge injection"
+HEART_REBUILD_REASON = (
+    "rebuilt from the adapted heart webui for Zhiban branding, Chinese copy, "
+    "and the controlled light-green theme"
+)
+NON_HTML_ADAPTATIONS = {
+    ("heart", "assets/index-BL7DV78x.js"): {
+        "source": "astrbot_plugin_angel_heart/pages/chat-config/assets/index-BL7DV78x.js",
+        "reason": HEART_REBUILD_REASON,
+    },
+    ("heart", "assets/style-LSpSUt7F.css"): {
+        "source": "astrbot_plugin_angel_heart/pages/chat-config/assets/style-LSpSUt7F.css",
+        "reason": HEART_REBUILD_REASON,
+    },
+}
 BRIDGE_ADAPTATIONS = {
-    "scope": "mapped upstream index.html files",
-    "mode": "authenticated SDK and module bridge injection",
-    "theme": "module_bridge.js controlled light-green overrides",
-    "motion": "cross-document CSS transition with reduced-motion opt-out",
+    "scope": "mapped upstream resources",
+    "mode": BRIDGE_REASON,
+    "theme": "first-paint head CSS plus module_bridge.js controlled light-green overrides",
+    "motion": "in-panel module loading with reduced-motion opt-out",
+    "non_html_policy": (
+        "only registered adaptations may differ; all other non-HTML resources "
+        "are copied byte-for-byte"
+    ),
     "unchanged_non_html_assets": True,
 }
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _non_html_adaptation(
+    module: str, source_parts: tuple[str, ...], relative_inside: str
+) -> dict[str, str] | None:
+    """Return the explicit registry entry for an adapted non-HTML resource."""
+    relative = PurePosixPath(relative_inside)
+    source_is_heart_build = (
+        source_parts[0] == "astrbot_plugin_angel_heart"
+        and source_parts[1:3] == ("pages", "chat-config")
+    )
+    if not source_is_heart_build or relative.parts[:1] != ("assets",):
+        return None
+    adaptation = NON_HTML_ADAPTATIONS.get((module, relative.as_posix()))
+    if adaptation is None:
+        raise ValueError(f"Adapted resource is missing from the manifest: {module}/{relative}")
+    return adaptation
+
+
 def _safe_relative_file(root: Path, value: str) -> Path | None:
     relative = PurePosixPath(value)
     if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
@@ -81,6 +124,7 @@ def build_views(
         pass
 
     generated: set[str] = set()
+    adapted_assets: list[dict[str, str]] = []
     for module, source_parts in mapping.items():
         if len(source_parts) < 2:
             raise ValueError(f"Invalid UI source mapping for {module}")
@@ -96,6 +140,9 @@ def build_views(
             if destination is None:
                 raise ValueError(f"Unsafe generated asset path: {output_relative}")
             destination.parent.mkdir(parents=True, exist_ok=True)
+            source_path = PurePosixPath(
+                *source_parts, *PurePosixPath(relative_inside).parts
+            ).as_posix()
             if source.name.lower() == "index.html":
                 html = source.read_text(encoding="utf-8")
                 depth = 2 + len(PurePosixPath(relative_inside).parent.parts)
@@ -104,8 +151,22 @@ def build_views(
                     html, source_parts[0], module_bridge_src=bridge_src
                 )
                 destination.write_text(html, encoding="utf-8", newline="")
+                adaptation = {"source": source_path, "reason": BRIDGE_REASON}
             else:
+                registered = _non_html_adaptation(
+                    module, source_parts, relative_inside
+                )
+                adaptation = registered
                 shutil.copy2(source, destination)
+            if adaptation is not None:
+                adapted_assets.append(
+                    {
+                        "path": output_relative,
+                        "sha256": _sha256(destination),
+                        "reason": adaptation["reason"],
+                        "source": adaptation["source"],
+                    }
+                )
             generated.add(output_relative)
 
     for stale in previous - generated:
@@ -114,9 +175,12 @@ def build_views(
             path.unlink()
 
     manifest = {
-        "schema_version": 2,
+        "schema_version": 3,
         "generated_files": sorted(generated),
-        "adaptations": BRIDGE_ADAPTATIONS,
+        "adaptations": {
+            **BRIDGE_ADAPTATIONS,
+            "adapted_assets": sorted(adapted_assets, key=lambda item: item["path"]),
+        },
     }
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),

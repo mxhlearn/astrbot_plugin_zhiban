@@ -42,12 +42,30 @@ async function createBridge() {
       this.lastModified = options.lastModified;
     }
   }
-  vm.runInNewContext(source, { window, File: FakeFile, Map, Promise, String, Number, Error, JSON, Date });
+  class FakeCustomEvent {
+    constructor(type, options) {
+      this.type = type;
+      this.detail = options?.detail;
+    }
+  }
+  vm.runInNewContext(source, {
+    window,
+    File: FakeFile,
+    CustomEvent: FakeCustomEvent,
+    Map,
+    Promise,
+    String,
+    Number,
+    Error,
+    JSON,
+    Date,
+  });
   const sent = [];
   const frame = {
     contentWindow: { postMessage: (message, origin) => sent.push({ message, origin }) },
     dataset: {},
     addEventListener: () => {},
+    dispatchEvent: () => {},
   };
   const detach = window.ZhibanBridge.attachFrame(frame, "meme", "表情互动");
   const message = listeners.get("message");
@@ -63,6 +81,7 @@ test("shell broker proxies child API requests through the authenticated Zhiban r
   const bridge = await createBridge();
   await bridge.sendFromChild({ kind: "ready" });
   assert.equal(bridge.sent[0].message.kind, "context");
+  assert.equal(bridge.sent[0].origin, "*");
   assert.equal(bridge.sent[0].message.context.pluginName, "meme_manager");
   assert.equal(bridge.frame.dataset.bridgeReady, "true");
 
@@ -81,6 +100,7 @@ test("shell broker accepts official SDK plugin-relative endpoints and rejects pa
   await bridge.sendFromChild({ kind: "request", requestId: "bare", action: "api:get", endpoint: "packs", params: {} });
   assert.deepEqual(bridge.calls[0], ["get", "ui/module_api/meme/packs", {}]);
   assert.equal(bridge.sent.at(-1).message.ok, true);
+
 
   await bridge.sendFromChild({ kind: "request", requestId: "other", action: "api:get", endpoint: "astrbot_plugin_qzone_ultra/page/status" });
   assert.equal(bridge.sent.at(-1).message.ok, false);

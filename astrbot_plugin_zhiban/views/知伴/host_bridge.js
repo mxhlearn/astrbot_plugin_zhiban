@@ -39,14 +39,29 @@
     return null;
   }
 
+  const trustedChildOrigins = new WeakMap();
+
   function post(frame, message) {
     if (!frame?.contentWindow) return;
-    const origin = window.location.origin;
-    frame.contentWindow.postMessage(message, origin === "null" ? "*" : origin);
+    // Child documents use the host-mandated sandbox without allow-same-origin.
+    // Their envelopes arrive with origin "null"; verify the exact registered
+    // frame source before targeting "*" for the return message.
+    const fromKnownChild = trustedChildOrigins.get(frame) === true;
+    const origin = fromKnownChild || window.location.origin === "null" ? "*" : window.location.origin;
+    frame.contentWindow.postMessage(message, origin);
+  }
+
+  function cloneableData(value, fallback = {}) {
+    if (value === undefined) return fallback;
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return fallback;
+    }
   }
 
   function sendResponse(frame, requestId, data) {
-    post(frame, { channel: CHANNEL, kind: "response", requestId, ok: true, data });
+    post(frame, { channel: CHANNEL, kind: "response", requestId, ok: true, data: cloneableData(data) });
   }
 
   function sendError(frame, requestId, error) {
@@ -63,10 +78,17 @@
     if (!moduleName || typeof endpoint !== "string") {
       throw new Error("模块 API 范围不匹配");
     }
-    const value = endpoint.replace(/^\/+/, "");
+    let value = endpoint.replace(/^\/+/, "");
     if (!value || value.includes("\\") || value.includes("://") || value.includes("?") || value.includes("#") ||
         value.split("/").some((part) => !part || part === "." || part === "..")) {
       throw new Error("模块 API 路径无效");
+    }
+    const proxyPrefixes = [
+      `ui/module_api/${moduleKey}/`,
+      `${moduleName}/`,
+    ];
+    for (const prefix of proxyPrefixes) {
+      if (value.startsWith(prefix)) value = value.slice(prefix.length);
     }
     const prefix = `${moduleName}/`;
     if (value.startsWith(prefix)) return value.slice(prefix.length);
@@ -154,11 +176,20 @@
     if (!found) return;
     if (event.origin !== "null" && event.origin !== window.location.origin) return;
     const { frame, state } = found;
+    trustedChildOrigins.set(frame, true);
     const message = event.data;
     if (!message || message.channel !== CHANNEL) return;
+    if (message.kind === "app:ready") {
+      if (message.module !== state.module) return;
+      if (message.token && state.appReadyToken && message.token !== state.appReadyToken) return;
+      state.appReady = true;
+      frame.dispatchEvent(new CustomEvent("zhiban:app-ready", { detail: { module: message.module, token: message.token } }));
+      return;
+    }
     if (message.kind === "ready") {
       state.bridgeReady = true;
       frame.dataset.bridgeReady = "true";
+      frame.dispatchEvent(new CustomEvent("zhiban:bridge-ready", { detail: { module: state.module } }));
       const parentContext = bridge()?.getContext?.() || {};
       post(frame, {
         channel: CHANNEL,
@@ -171,6 +202,7 @@
           locale: parentContext.locale || "zh-CN",
           i18n: parentContext.i18n || {},
           isDark: parentContext.isDark,
+          appReadyToken: state.appReadyToken,
         },
       });
       return;
@@ -200,7 +232,7 @@
     attachFrame(frame, module, label) {
       const previous = frames.get(frame);
       if (previous) void cleanupFrame(frame, previous);
-      const state = { module, label, subscriptions: new Map(), loaded: false, bridgeReady: false };
+      const state = { module, label, subscriptions: new Map(), loaded: false, bridgeReady: false, appReady: false, appReadyToken: `${module}-${Date.now()}` };
       frames.set(frame, state);
       frame.dataset.bridgeReady = "false";
       frame.addEventListener("load", () => {

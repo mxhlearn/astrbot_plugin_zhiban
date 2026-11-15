@@ -1,6 +1,6 @@
 <template>
   <n-layout class="layout" has-sider>
-    <!-- 左侧：模板列表 -->
+    <!-- 左侧：对话策略列表 -->
     <n-layout-sider
       width="260"
       collapse-mode="width"
@@ -12,15 +12,7 @@
     >
       <div class="sidebar-inner" :class="{ collapsed: sidebarCollapsed }">
         <div class="sidebar-header">
-          <button
-            class="theme-toggle"
-            type="button"
-            :title="isDark ? '切换到光模式' : '切换到暗模式'"
-            @click="toggleTheme()"
-          >
-            <Icon :icon="isDark ? 'lucide:sun' : 'lucide:moon'" />
-          </button>
-          <div v-if="!sidebarCollapsed" class="brand">天使之心</div>
+          <div v-if="!sidebarCollapsed" class="brand">聊天互动</div>
           <n-button
             v-if="!sidebarCollapsed"
             type="primary"
@@ -51,7 +43,7 @@
           />
           <n-empty
             v-if="!templates.length && !sidebarCollapsed"
-            description="还没有模板，点击右上角新建"
+            description="还没有对话策略，点击右上角新建"
             class="list-empty"
           />
         </n-scrollbar>
@@ -73,10 +65,10 @@
     <n-layout-content class="content">
       <n-scrollbar class="content-scroll">
       <div class="content-inner">
-      <!-- 联系人监控 -->
+      <!-- 对话运行状态 -->
       <template v-if="viewMode === 'monitor'">
         <div class="content-header">
-          <h2>联系人监控</h2>
+          <h2>对话运行状态</h2>
           <span class="content-sub">群聊与私聊的在场状态、巡检与最近决策，每 3 秒自动刷新</span>
         </div>
         <n-radio-group v-model:value="kindFilter" class="kind-filter">
@@ -137,10 +129,10 @@
         </div>
       </template>
 
-      <!-- 全局配置（可编辑）：schema 驱动分段卡片；有草稿变更时右下角浮出保存按钮 -->
+      <!-- 默认对话策略（可编辑）：schema 驱动分段卡片；有草稿变更时右下角浮出保存按钮 -->
       <template v-else-if="!selectedId">
         <div class="content-header">
-          <h2>全局配置</h2>
+          <h2>默认对话策略</h2>
           <span class="content-sub">未绑定群聊使用的默认配置，与原生插件配置页同源</span>
         </div>
         <n-card title="系统提示词" class="prompt-card" embedded>
@@ -191,7 +183,7 @@
         <n-spin v-else style="margin-top: 40px" />
       </template>
 
-      <!-- 模板配置编辑：与全局配置共用 SchemaForm 分段卡 -->
+      <!-- 对话策略配置编辑：与默认对话策略共用 SchemaForm 分段卡 -->
       <template v-else>
         <div class="content-header">
           <h2>{{ currentTemplate?.name }}</h2>
@@ -208,41 +200,41 @@
       </n-scrollbar>
     </n-layout-content>
 
-    <!-- 新建模板弹窗 -->
+    <!-- 新建对话策略弹窗 -->
     <n-modal
       v-model:show="createModalVisible"
       preset="dialog"
-      title="新建配置模板"
+      title="新建对话策略"
       positive-text="创建"
       negative-text="取消"
       @positive-click="createTemplate"
     >
       <n-form label-placement="top" class="create-form">
-        <n-form-item label="模板名称">
+        <n-form-item label="策略名称">
           <n-input v-model:value="createForm.name" placeholder="如：游戏群、学术群" />
         </n-form-item>
         <n-form-item label="初始配置">
           <n-radio-group v-model:value="createForm.mode">
-            <n-radio value="empty">空白模板</n-radio>
-            <n-radio value="global">从全局配置复制</n-radio>
+            <n-radio value="empty">空白策略</n-radio>
+            <n-radio value="global">从默认对话策略复制</n-radio>
           </n-radio-group>
         </n-form-item>
       </n-form>
     </n-modal>
 
-    <!-- 重命名弹窗 -->
+    <!-- 重命名对话策略弹窗 -->
     <n-modal
       v-model:show="renameModalVisible"
       preset="dialog"
-      title="重命名模板"
+      title="重命名对话策略"
       positive-text="保存"
       negative-text="取消"
       @positive-click="renameTemplate"
     >
-      <n-input v-model:value="renameForm.name" placeholder="模板名称" />
+      <n-input v-model:value="renameForm.name" placeholder="策略名称" />
     </n-modal>
 
-    <!-- 悬浮保存按钮：全局配置或模板草稿变更时浮出 -->
+    <!-- 悬浮保存按钮：默认对话策略或对话策略草稿变更时浮出 -->
     <Transition name="fab">
       <n-button
         v-if="configDirty"
@@ -261,7 +253,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted, reactive, ref } from 'vue'
 import {
   NButton,
   NCard,
@@ -295,13 +287,11 @@ import {
   type TemplateConfig,
 } from './fields'
 import { useBridge } from './composables/useBridge'
-import { themeKey } from './theme'
 import SchemaForm from './SchemaForm.vue'
 import type { SchemaMeta } from './schema'
 
 const { apiGet, apiPost } = useBridge()
 const message = useMessage()
-const { isDark, toggle: toggleTheme } = inject(themeKey)!
 
 const templates = ref<TemplateDetail[]>([])
 const chats = ref<ChatItem[]>([])
@@ -350,7 +340,7 @@ function effectiveKind(item: ChatStatusItem): string {
 
 // ---------- 侧栏导航（n-menu 渲染，颜色/选中态全部来自全局主题） ----------
 const settingsMenuOptions: MenuOption[] = [
-  { label: '插件设置', key: 'settings', icon: () => h(Icon, { icon: 'lucide:settings' }) },
+  { label: '对话设置', key: 'settings', icon: () => h(Icon, { icon: 'lucide:settings' }) },
 ]
 
 function renderTemplateLabel(tpl: TemplateDetail) {
@@ -385,7 +375,7 @@ function renderTemplateLabel(tpl: TemplateDetail) {
                   { size: 'tiny', quaternary: true, circle: true, type: 'error', title: '删除' },
                   { icon: () => h(Icon, { icon: 'lucide:trash-2' }) },
                 ),
-              default: () => '删除后绑定它的群聊将回退到全局配置',
+              default: () => '删除后绑定它的群聊将回退到默认对话策略',
             },
           ),
         ],
@@ -394,7 +384,7 @@ function renderTemplateLabel(tpl: TemplateDetail) {
 }
 
 const sidebarMenuOptions = computed<MenuOption[]>(() => [
-  { label: '联系人监控', key: 'monitor', icon: () => h(Icon, { icon: 'lucide:activity' }) },
+  { label: '对话运行状态', key: 'monitor', icon: () => h(Icon, { icon: 'lucide:activity' }) },
   ...templates.value.map((tpl) => ({
     key: tpl.id,
     icon: () => h(Icon, { icon: 'lucide:file-text' }),
@@ -412,7 +402,7 @@ const sidebarMenuValue = computed(() => {
   return selectedId.value
 })
 
-// ---------- 插件设置（全局 _conf_schema.json） ----------
+// ---------- 对话设置（全局 _conf_schema.json） ----------
 
 const settingsSchema = ref<Record<string, SchemaMeta>>({})
 const settingsValues = ref<Record<string, unknown>>({})
@@ -492,7 +482,7 @@ async function savePromptSettings() {
   }
 }
 
-// 全局配置可编辑：首次切到全局配置视图时加载 schema + 当前值
+// 默认对话策略可编辑：首次切到默认对话策略视图时加载 schema + 当前值
 function loadPluginConfig() {
   if (settingsLoaded.value) return
   void (async () => {
@@ -508,7 +498,7 @@ function loadPluginConfig() {
       settingsBaseline.value = JSON.stringify(settingsValues.value)
       settingsLoaded.value = true
     } catch (e) {
-      message.error(`加载插件设置失败: ${(e as Error).message}`)
+      message.error(`加载对话设置失败: ${(e as Error).message}`)
     }
   })()
 }
@@ -551,7 +541,7 @@ function selectTemplate(id: string | null) {
   viewMode.value = 'config'
   selectedId.value = id
   if (!id) {
-    // 全局配置视图：懒加载可编辑数据源
+    // 默认对话策略视图：懒加载可编辑数据源
     loadPluginConfig()
     loadPromptSettings()
     return
@@ -571,7 +561,7 @@ function selectTemplate(id: string | null) {
   templateBaseline.value = JSON.stringify(model)
 }
 
-// 模板草稿基线：与全局配置共用悬浮保存按钮
+// 对话策略草稿基线：与默认对话策略共用悬浮保存按钮
 const templateBaseline = ref('')
 const templateDirty = computed(() => JSON.stringify(configModel.value) !== templateBaseline.value)
 
@@ -586,7 +576,7 @@ function saveCurrent() {
   else void savePluginConfig()
 }
 
-// 模板编辑用 schema：从全局 schema 按 fields.ts 的精选分组裁剪出子集
+// 对话策略编辑用 schema：从全局 schema 按 fields.ts 的精选分组裁剪出子集
 const templateSchema = computed<Record<string, SchemaMeta>>(() => {
   const out: Record<string, SchemaMeta> = {}
   for (const group of GROUPS) {
@@ -616,7 +606,7 @@ function openCreateModal() {
 
 async function createTemplate() {
   if (!createForm.name.trim()) {
-    message.warning('请输入模板名称')
+    message.warning('请输入策略名称')
     return false
   }
   try {
@@ -624,7 +614,7 @@ async function createTemplate() {
       name: createForm.name,
       from_global: createForm.mode === 'global',
     })
-    message.success('模板已创建')
+    message.success('对话策略已创建')
     await loadAll()
     selectTemplate(data.id)
     return true
@@ -642,7 +632,7 @@ function openRenameModal(tpl: TemplateDetail) {
 
 async function renameTemplate() {
   if (!renameTarget || !renameForm.name.trim()) {
-    message.warning('请输入模板名称')
+    message.warning('请输入策略名称')
     return false
   }
   try {
@@ -662,7 +652,7 @@ async function renameTemplate() {
 async function deleteTemplate(id: string) {
   try {
     await apiPost('profiles/delete', { id })
-    message.success('模板已删除')
+    message.success('对话策略已删除')
     if (selectedId.value === id) selectedId.value = null
     await loadAll()
   } catch (e) {
@@ -690,7 +680,7 @@ async function saveTemplate() {
 
 function bindingOptions(_chatId: string) {
   return [
-    { label: '全局配置（默认）', value: '' },
+    { label: '默认对话策略（默认）', value: '' },
     ...templates.value.map((t) => ({ label: t.name, value: t.id })),
   ]
 }
@@ -799,34 +789,6 @@ onUnmounted(() => {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-1);
-}
-
-/* 左上角主题切换：胶囊圆钮 */
-.theme-toggle {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  color: inherit;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-full);
-  background: var(--glass-regular-bg);
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    var(--glass-shadow);
-  cursor: pointer;
-  transition: transform 0.15s ease, background 0.2s ease;
-}
-
-.theme-toggle:hover {
-  transform: scale(1.06);
-}
-
-.theme-toggle:active {
-  transform: scale(0.94);
 }
 
 .inline-icon {
@@ -1041,7 +1003,7 @@ onUnmounted(() => {
   padding-top: 12px;
 }
 
-/* n-menu 模板项的行内操作钮：hover 行时才出现（render 函数节点无 scoped 标记，需全局样式） */
+/* n-menu 对话策略项的行内操作钮：hover 行时才出现（render 函数节点无 scoped 标记，需全局样式） */
 .tpl-label {
   display: flex;
   align-items: center;

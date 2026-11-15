@@ -8,6 +8,16 @@
   <style>
     :root {
       color-scheme: light;
+      --bg-app: #f5f8f4;
+      --bg-sidebar: #eef5ec;
+      --bg-card: #ffffff;
+      --bg-hover: #e7f0e7;
+      --accent-light: #ddeedc;
+      --border-light: #dce6da;
+      --border-normal: #bdcfbb;
+      --text-primary: #24382c;
+      --text-secondary: #617367;
+      --text-tertiary: #718477;
       --zb-bg: #f5f8f4;
       --zb-side: #eef5ec;
       --zb-white: #ffffff;
@@ -304,6 +314,30 @@
     .mini-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
     .mini-metric { display: grid; gap: 3px; padding: 11px 12px; border: 1px solid var(--zb-line); border-radius: 9px; background: var(--zb-bg); }
     .mini-metric strong { font-size: 18px; font-weight: 600; }
+    .module-frame-host { position: relative; min-height: 520px; height: calc(100vh - 218px); }
+    .module-frame-host .module-frame { height: 100%; min-height: 520px; }
+    .module-frame-loading {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: grid;
+      place-content: center;
+      justify-items: center;
+      gap: 11px;
+      border: 1px solid var(--zb-line);
+      border-radius: var(--zb-radius);
+      background: var(--zb-bg);
+      color: var(--zb-muted);
+      font-size: 12px;
+      transition: opacity .14s ease;
+    }
+    .module-frame-host.loaded .module-frame-loading { pointer-events: none; opacity: 0; }
+    .module-frame-host.failed .module-frame-loading { display: none; }
+    .module-frame-spinner { width: 22px; height: 22px; border: 2px solid var(--zb-line); border-top-color: var(--zb-green); border-radius: 50%; animation: zb-spin .8s linear infinite; }
+    @keyframes zb-spin { to { transform: rotate(360deg); } }
+    .module-frame-failure { position: absolute; inset: 0; z-index: 3; display: grid; align-content: center; justify-items: start; gap: 9px; padding: 24px; border: 1px solid var(--zb-danger); border-radius: var(--zb-radius); background: var(--zb-white); }
+    .module-frame-failure strong { color: var(--zb-danger); }
+    .module-frame-failure p { max-width: 620px; color: var(--zb-muted); }
     .module-frame {
       display: block;
       width: 100%;
@@ -469,7 +503,8 @@
       .status { order: 2; }
       .page-heading h1 { font-size: 21px; }
       .overview-columns { grid-template-columns: 1fr; }
-      .module-frame { height: calc(100svh - 285px); min-height: 420px; }
+      .module-frame-host { height: calc(100svh - 285px); min-height: 420px; }
+      .module-frame-host .module-frame { min-height: 420px; }
       .settings-field { grid-template-columns: 1fr; gap: 7px; }
       .config-status-bar { align-items: flex-start; flex-direction: column; }
       .form-grid { grid-template-columns: 1fr; }
@@ -496,6 +531,7 @@
     @media (prefers-reduced-motion: reduce) {
       ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
       html[data-navigating="true"] body::after { animation: none !important; }
+      .module-frame-spinner { animation: none !important; }
       *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
     }
   </style>

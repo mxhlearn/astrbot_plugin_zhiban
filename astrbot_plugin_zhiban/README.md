@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="#安装与切换"><img alt="Version" src="https://img.shields.io/badge/version-0.3.1-2f6b4f?style=flat-square"></a>
+  <a href="#安装与切换"><img alt="Version" src="https://img.shields.io/badge/version-0.3.2-2f6b4f?style=flat-square"></a>
   <a href="#兼容范围"><img alt="AstrBot" src="https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square"></a>
   <a href="#兼容范围"><img alt="OneBot" src="https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square"></a>
   <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-97%20Python%20%2B%2017%20Node-2f6b4f?style=flat-square"></a>
@@ -29,7 +29,7 @@
 3. 在 AstrBot 鉴权下代理模块 API，保护密钥与配置版本冲突。
 4. 以经过清单管理的浅绿色主题和轻量导航适配上游页面。
 
-> `0.3.1` 重点修复了重复点击导致页面重载、导航缺少即时反馈、设置页重复状态探测和快速切换竞态。
+> `0.3.2` 重点完善了重复点击导致页面重载、导航缺少即时反馈、设置页重复状态探测和快速切换竞态。
 
 ## 界面与导航
 
@@ -141,15 +141,15 @@ LivingMemory 是唯一长期记忆模块。AngelMemory 和内容/链接过滤不
 
 ## 页面与低占用设计
 
-AstrBot 4.29.3 的插件页面受 sandbox 与同源框架策略约束，知伴签名页面不能再嵌套 AstrBot 签名工作台。0.3.1 因此使用受保护的跨页面导航，并在上游页面注入统一外壳，避免依赖受 sandbox、框架策略与初始化时序影响的嵌套方式。
+AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads` sandbox；内层文档 origin 为 `null`。知伴由登录态父页读取签名模块 HTML，再以保留签名资源基址的 `srcdoc` 内容面板载入，避免直接嵌套受 `X-Frame-Options` / `frame-ancestors` 限制的签名响应。
 
 当前策略：
 
-- 只加载当前工作台，不常驻十个页面。
-- 同一入口重复点击不导航，不重建页面。
-- 快速发起多次跳转时只允许首个有效导航进入，最终页面保持为最后目标。
-- 跨文档过渡约 120–160 ms；减少动态效果设置下完全关闭。
-- 页面白屏阶段有轻量进度提示，侧栏先显示基础结构，再异步补全状态。
+- 五个入口和模块侧栏只在知伴外壳中维护一份。
+- 同一入口重复点击不重建，快速切换会中止旧页面请求并忽略旧 ready 事件。
+- 当前模块通过签名 HTML + `srcdoc` 内容面板载入；首帧主题和 adapter 位于业务脚本之前。
+- 顶层模块请求由受限 host broker 转发；真实桥接 ready 事件控制加载层，超时会显示可操作错误态。
+- 宿主只接受已注册 frame 的 source 与 `null`/同源 envelope，再以受 source 校验保护的 `postMessage("*")` 返回响应。
 - 可见状态页每 5 秒更新；隐藏页面、配置页和全局设置页停止知伴轮询。
 - 状态快照最多复用 5 秒，只含模块状态、菜单顺序和调度摘要。
 - 不增加框架、网络字体或重型动画依赖。
@@ -165,14 +165,15 @@ AstrBot 4.29.3 的插件页面受 sandbox 与同源框架策略约束，知伴�
 | 修复前重复进入当前“记忆成长” | 约 3.18 秒，再次整页加载并请求状态 |
 | 修复后重复进入当前模块 | 页面不重建，业务请求 0 |
 | 全局设置接口 | 约 26 ms |
-| 两个模块之间重复切换 20 次 | 平均约 1.44 秒；约 0.85–1.79 秒 |
-| 一轮 20 次往返后 DOM | 文档数保持 3，节点数保持 899 |
+| 记忆模块真实统计 | 6 条记忆、50 节点、139 关系、2 个活跃会话 |
+| 模块 bridge | `data-bridge-ready=true`，真实 API 响应可见 |
 | AstrBot 主进程空闲工作集 | 约 367 MiB，包含宿主与十个模块 |
 
 资源限制：
 
 - 主进程工作集不是插件增量，不能据此宣称满足“插件增量 60 MiB”。
-- 活动 frame 与监听数会随访问到的不同模块变化；当前没有通过该抽查证明长期回收完全稳定。
+- 每个模块面板仅在当前工作台存在；切换时会移除旧 iframe 并清理实时订阅。
+- 活动 frame 与监听数的长期回收仍需在目标 Linux 服务器重复压测。
 - Linux、SnowLuma、完整 OneBot 收发和 2 GB 全栈目标仍未验收。
 
 ## 命令
@@ -187,9 +188,9 @@ AstrBot 4.29.3 的插件页面受 sandbox 与同源框架策略约束，知伴�
 
 ## 质量与验证
 
-2026-11-14，知伴 0.3.1：
+2026-11-15，知伴 0.3.2：
 
-- **Python**：97 项测试通过，另有 18 个子测试通过。
+- **Python**：101 项测试通过，另有 31 个子测试通过。
 - **Node**：17 项测试通过。
 - **构建**：830 个发布文件、79 个生成资源；资源清单、ZIP、本机安装副本和 SHA-256 一致。
 - **页面**：五入口、总览、全局设置、十个模块入口和配置页完成登录态检查。

@@ -238,11 +238,29 @@ def prepare_module_ui_html(
         (key for key, root in MODULE_UI_ROOTS.items() if root[0] == plugin_name),
         None,
     )
-    script = '<meta name="view-transition" content="same-origin">'
-    script += '<script src="/api/plugin/page/bridge-sdk.js"></script>'
+    page_theme_bootstrap = (
+        '<script id="zhiban-page-theme-bootstrap">'
+        '(function(){var el=document.documentElement;if(!el||!el.dataset)return;'
+        'var embedded=new URLSearchParams(location.search).get("embedded")==="frame";'
+        'el.dataset.zhibanEmbedded=embedded?"true":"false";'
+        'if(embedded){el.dataset.zhibanHostFrame="true";}'
+        '})();'
+        '</script>'
+    )
+    first_paint = '<meta name="view-transition" content="same-origin">'
+    first_paint += '<meta name="color-scheme" content="light">'
+    first_paint += '<meta name="zhiban-runtime-marker" content="module">'
+    first_paint += "<style id=\"zhiban-head-theme\">:root{color-scheme:light;--bg-app:#f5f8f4;--bg-sidebar:#eef5ec;--bg-card:#fff;--bg-hover:#e7f0e7;--accent-light:#ddeedc;--graph-surface:#f8fbf7;--border-light:#dce6da;--border-normal:#bdcfbb;--text-primary:#24382c;--text-secondary:#617367;--text-tertiary:#718477;--text-inverse:#fff;--accent:#2f6b4f;--accent-hover:#24563f;--primary-color:#2f6b4f;--primary:#2f6b4f;--accent-color:#2f6b4f;--link-color:#2f6b4f}html{background:#f5f8f4;color:#24382c}body{background:#f5f8f4;color:#24382c}:is(.n-button--primary-type,.btn-primary,.button-primary,.el-button--primary,.ant-btn-primary){background:#2f6b4f;border-color:#2f6b4f;color:#fff}</style>"
+    shell_bootstrap = (
+        '<script id="zhiban-shell-bootstrap">'
+        'document.documentElement.dataset.zhibanEmbedded='
+        'new URLSearchParams(location.search).get("embedded")==="frame"?"true":"false";'
+        '</script>'
+    )
+    script = '<script src="/api/plugin/page/bridge-sdk.js"></script>'
     if module_key:
-        script += f'<script src="{module_bridge_src}" data-module-key="{module_key}"></script>'
+        script += f'<script id="zhiban-module-adapter" src="{module_bridge_src}" data-module-key="{module_key}"></script>'
     match = re.search(r"<head\b[^>]*>", html, flags=re.IGNORECASE)
     if match:
-        return html[: match.end()] + script + html[match.end() :]
-    return script + html
+        return html[: match.end()] + page_theme_bootstrap + first_paint + shell_bootstrap + script + html[match.end() :]
+    return page_theme_bootstrap + first_paint + shell_bootstrap + script + html

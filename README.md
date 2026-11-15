@@ -7,11 +7,11 @@
 
 **把分散的 AstrBot QQ 机器人能力，整理成一个真正可用的中文应用。**
 
-[![Version](https://img.shields.io/badge/version-0.3.1-2f6b4f?style=flat-square)](astrbot_plugin_zhiban/metadata.yaml)
+[![Version](https://img.shields.io/badge/version-0.3.2-2f6b4f?style=flat-square)](astrbot_plugin_zhiban/metadata.yaml)
 [![AstrBot](https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square)](https://github.com/AstrBotDevs/AstrBot)
 [![OneBot](https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square)](#兼容矩阵)
 [![Python](https://img.shields.io/badge/Python-3.12-3f7560?style=flat-square)](#本地开发)
-[![Tests](https://img.shields.io/badge/tests-97%20Python%20%2B%2017%20Node-2f6b4f?style=flat-square)](#质量与验证)
+[![Tests](https://img.shields.io/badge/tests-101%20Python%20%2B%2017%20Node-2f6b4f?style=flat-square)](#质量与验证)
 [![License](https://img.shields.io/badge/license-mixed%20%2F%20review%20required-8c5917?style=flat-square)](astrbot_plugin_zhiban/README.md)
 
 [快速开始](#快速开始) · [功能模块](#十个运行模块) · [完整文档](astrbot_plugin_zhiban/README.md)
@@ -31,7 +31,7 @@
 | 配置入口与宿主设置重复 | 总览集中启停与调度，各模块保留业务配置 |
 | 密钥可能回显或误覆盖 | 脱敏、版本冲突检测、显式清除、保存后应用 |
 | 页面风格不一致 | 浅绿色品牌主题与受控上游样式适配 |
-| 每次切换都整页重载 | 路由去重、轻量过渡、短时状态缓存与竞态保护 |
+| 每次切换都整页重载 | 单一外壳、内容面板切换、短时状态缓存与竞态保护 |
 | 十个工作台同时常驻 | 只加载当前页面，保留低占用边界 |
 
 ## 界面
@@ -49,8 +49,8 @@
 - 桌面左栏导航；窄屏自动切换为顶部导航。
 - 白色内容区、浅绿背景、深绿主操作，固定品牌语义。
 - 1024、768、390 像素响应式布局已验收。
-- 浏览器支持跨文档过渡时使用约 120–160 ms 的浅淡过渡；`prefers-reduced-motion` 下自动关闭。
-- 页面切换先给出即时忙碌反馈，不靠长动画掩盖等待。
+- 模块正文在知伴内容面板内切换，顶部五入口与侧栏不重绘。
+- 模块的浅绿首帧、桥接 adapter 与 SDK 顺序由构建产物控制；状态就绪需由真实 bridge 事件确认，不以定时器代替。
 
 ## 五个一级入口
 
@@ -139,23 +139,23 @@
 | 当前入口重复点击 | 页面不重建，业务请求 0 |
 | 全局设置接口 | 约 26 ms |
 | 模块间重复切换 20 次 | 平均约 1.44 秒，范围约 0.85–1.79 秒 |
-| 页面往返后的 DOM | 文档数保持 3，节点数保持 899 |
+| 页面往返后的 DOM | 外壳文档保持 1 个顶层知伴页面 |
 | AstrBot 主进程空闲工作集 | 约 367 MiB（包含宿主与十个模块，不是插件增量） |
 
-活动 frame 与监听数仍会随访问过的不同模块变化，长期回收尚需更深入的 session 级验证；Linux 与完整 OneBot 全栈也未完成端到端资源验收。
+当前验收覆盖 Windows + AstrBot 4.29.3 + Chromium 登录态，并使用模块真实 API 响应验证记忆页数据；Linux、SnowLuma 与完整 OneBot 收发仍应在目标服务器分别验收。
 
 ## 质量与验证
 
-- **Python**：97 项测试通过，另有 18 个子测试通过。
+- **Python**：101 项测试通过，另有 31 个子测试通过。
 - **Node**：17 项测试通过。
-- **真实页面**：五入口、总览、全局设置、配置页、10 个模块入口和 1024/768/390 像素布局已检查。
+- **真实页面**：Windows/Chromium 登录态验证五入口、浅绿首帧、记忆真实统计、模块 bridge 就绪、快速切换与配置页；Linux 实际部署仍待服务器验收。
 - **配置安全**：并发冲突、密钥脱敏、显式清除、保存/应用、无修改反馈均有回归。
 - **竞态**：快速并发跳转最终停留在最后目标，旧页面结果不覆盖新页面。
 - **构建**：830 个发布文件、79 个生成页面资源；资源清单、ZIP、安装副本和 SHA-256 对照通过。
 
-本地构建产物：`dist/zhiban-0.3.1.zip`（`dist/` 不进入 Git；可从 Release Assets 或本地构建取得）
+本地构建产物：`dist/zhiban-0.3.2.zip`（`dist/` 不进入 Git；可从 Release Assets 或本地构建取得）
 
-SHA-256：`a91d8dfb477311edb8fbd8c65b218ae6eb92dd714e3d2299be24e49ca1bda0d6`
+发布包 SHA-256：`bf6ac59625d0f72f677222bee8284bd2031cc8210ee15d7edf85266cfc19b4f3`
 
 ## 开发模型
 

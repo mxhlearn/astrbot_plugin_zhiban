@@ -1,5 +1,5 @@
 /**
- * 模板字段定义，与后端 core/chat_profile.py 的 TEMPLATE_GROUPS 对齐。
+ * 对话策略字段定义，与后端 core/chat_profile.py 的 TEMPLATE_GROUPS 对齐。
  * hint 文案与官方 _conf_schema.json 对齐。
  * type: text | textarea | number | bool
  */
@@ -26,11 +26,11 @@ export const GROUPS: GroupDef[] = [
     label: '点名与交互',
     desc: '被点名、被召唤时的行为规则',
     fields: [
-      { key: 'alias', label: '唤醒词', type: 'text', placeholder: '如：AngelHeart', hint: '用于点名匹配。多个昵称请用 \'|\' 分隔。' },
+      { key: 'alias', label: '唤醒词', type: 'text', placeholder: '如：知伴|小知', hint: '用于点名匹配。多个昵称请用 \'|\' 分隔。' },
       { key: 'enter_on_mention_only', label: '仅点名入场', type: 'bool', hint: '启用后，离场时只有点名消息（@或昵称）能入场；关闭后任何消息都会入场处理。' },
       { key: 'force_reply_when_summoned', label: '被点名强制回复', type: 'bool', hint: '启用后，只要消息命中人格名称或助理昵称，助理都会直接回复。' },
       { key: 'reply_even_not_questioned', label: '非提问也回复', type: 'bool', hint: '关闭时，只有群友有求于助理或话题让助理感兴趣才会回复。开启时，即使只是打招呼或闲聊也会回应。' },
-      { key: 'block_unapproved_wake_non_command', label: '拦截未认可的唤醒词', type: 'bool', hint: '启用后，命中上游点名但未通过天使之心批准的非命令消息将被直接拦截。' },
+      { key: 'block_unapproved_wake_non_command', label: '拦截未认可的唤醒词', type: 'bool', hint: '启用后，命中上游点名但未通过聊天互动批准的非命令消息将被直接拦截。' },
       { key: 'slap_words', label: '掌嘴词', type: 'text', placeholder: '听到后进入沉默（竖线分隔）', hint: '当消息中包含这些词时，插件将进入静默状态。多个词请用 \'|\' 分隔。' },
       { key: 'speak_words', label: '张嘴词', type: 'text', placeholder: '听到后解除沉默（竖线分隔）', hint: '当消息中包含这些词时，插件将解除闭嘴状态。多个词请用 \'|\' 分隔。' },
       { key: 'silence_duration', label: '沉默时长（秒）', type: 'number', step: 10, hint: '触发掌嘴后，插件保持静默的时间。' },

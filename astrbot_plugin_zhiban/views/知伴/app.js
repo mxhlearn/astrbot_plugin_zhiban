@@ -61,6 +61,11 @@ let schedulerStatus = null;
 let settingsControlSequence = 0;
 let draftGuard = null;
 let navigationStarted = false;
+let activeModuleFrame = null;
+let activeModuleFrameDetach = null;
+let activeModuleReadyTimer = null;
+let moduleFrameSequence = 0;
+let activeModuleFetch = null;
 let statusRequestSequence = 0;
 let statusRequestInFlight = null;
 const STATUS_CACHE_KEY = "zhiban-status-cache-v1";
@@ -414,18 +419,126 @@ function renderGlobalOverview() {
   refresh.disabled = false;
 }
 
-function createModuleFrameElement(item) {
-  if (navigationStarted) return;
-  const frame = document.createElement("iframe");
-  frame.className = "module-frame";
-  frame.title = `${item.label}工作台`;
-  frame.loading = "lazy";
-  frame.referrerPolicy = "same-origin";
-  const url = new URL(`modules/${item.page}/index.html`, document.baseURI);
-  url.searchParams.set("embedded", "1");
-  workspace.replaceChildren(frame);
-  frame.src = url.href;
-  refresh.disabled = false;
+function detachModuleFrame() {
+  moduleFrameSequence += 1;
+  if (activeModuleFetch) activeModuleFetch.abort();
+  activeModuleFetch = null;
+  if (activeModuleReadyTimer) clearTimeout(activeModuleReadyTimer);
+  activeModuleReadyTimer = null;
+  if (typeof activeModuleFrameDetach === "function") activeModuleFrameDetach();
+  activeModuleFrameDetach = null;
+  if (activeModuleFrame) {
+    activeModuleFrame.remove();
+    activeModuleFrame = null;
+  }
+}
+
+function showFrameFailure(host, item, reason = "") {
+  if (!host?.isConnected) return;
+  host.classList.add("failed");
+  const failure = element("div", "module-frame-failure");
+  failure.append(
+    element("strong", "", `${item.label}暂时无法加载`),
+    element("p", "", reason || "模块页面未完成初始化。可以重试，或打开配置检查状态。"),
+  );
+  const actions = element("div", "action-row");
+  const retry = element("button", "button primary", "重新加载");
+  retry.type = "button";
+  retry.addEventListener("click", () => createModuleFrameElement(item));
+  const config = element("button", "button", "打开配置");
+  config.type = "button";
+  config.addEventListener("click", () => setView("settings"));
+  actions.append(retry, config);
+  failure.append(actions);
+  host.append(failure);
+}
+
+function activeModuleById(key) {
+  return modules.find((item) => item.key === key) || moduleCatalog.find((item) => item.key === key);
+}
+
+function moduleErrorText(error) {
+  return error instanceof Error ? error.message : "模块页面读取失败。";
+}
+
+async function createModuleFrameElement(item) {
+  detachModuleFrame();
+  const sequence = moduleFrameSequence;
+  const host = element("section", "module-frame-host");
+  host.dataset.module = item.key;
+  const loading = element("div", "module-frame-loading");
+  loading.setAttribute("role", "status");
+  loading.append(element("span", "module-frame-spinner"), element("span", "", `正在打开${item.label}`));
+  host.append(loading);
+  workspace.replaceChildren(host);
+  refresh.disabled = true;
+  try {
+    const pageUrl = new URL(`modules/${item.page}/index.html`, new URL("./", document.baseURI));
+    pageUrl.searchParams.set("embedded", "frame");
+    pageUrl.searchParams.set("zhiban_panel", "1");
+    pageUrl.searchParams.set("theme", document.documentElement.dataset.theme || "light");
+    const assetToken = new URL(location.href).searchParams.get("asset_token");
+    if (assetToken) pageUrl.searchParams.set("asset_token", assetToken);
+    const controller = new AbortController();
+    activeModuleFetch = controller;
+    const response = await fetch(pageUrl.href, { credentials: "same-origin", cache: "no-store", signal: controller.signal });
+    if (activeModuleFetch === controller) activeModuleFetch = null;
+    if (!response.ok) throw new Error(`模块页面返回 HTTP ${response.status}`);
+    const source = await response.text();
+    if (sequence !== moduleFrameSequence || !host.isConnected) return;
+    const frame = document.createElement("iframe");
+    frame.className = "module-frame";
+    frame.title = `${item.label}工作台`;
+    frame.loading = "eager";
+    frame.referrerPolicy = "same-origin";
+    frame.setAttribute("sandbox", "allow-scripts allow-forms allow-downloads");
+    frame.dataset.module = item.key;
+    activeModuleFrame = frame;
+    activeModuleFrameDetach = window.ZhibanBridge?.attachFrame(frame, item.key, item.label) || null;
+    const markLoaded = () => {
+      if (sequence !== moduleFrameSequence || activeModuleFrame !== frame) return;
+      if (activeModuleReadyTimer) clearTimeout(activeModuleReadyTimer);
+      activeModuleReadyTimer = null;
+      host.classList.add("ready", "loaded");
+      frame.dataset.appReady = "true";
+      refresh.disabled = false;
+      // Refresh now that the module's own bridge is live; a stale pre-frame
+      // status refresh must not leave the parent controls disabled.
+      void refreshStatus({ background: true });
+    };
+    frame.addEventListener("zhiban:app-ready", markLoaded, { once: true });
+    frame.addEventListener("zhiban:bridge-ready", markLoaded, { once: true });
+    activeModuleReadyTimer = setTimeout(() => {
+      if (sequence !== moduleFrameSequence || activeModuleFrame !== frame) return;
+      host.classList.add("ready", "failed");
+      showFrameFailure(host, item, "模块页面已读取，但业务界面未完成初始化。");
+      refresh.disabled = false;
+    }, 20000);
+    frame.srcdoc = rewriteModuleDocument(source, pageUrl.href, item.key);
+    host.append(frame);
+    refresh.disabled = false;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    if (sequence !== moduleFrameSequence || !host.isConnected) return;
+    host.classList.add("ready", "failed");
+    showFrameFailure(host, item, moduleErrorText(error));
+    refresh.disabled = false;
+  }
+}
+
+function rewriteModuleDocument(source, documentUrl, moduleKey) {
+  const moduleBase = new URL("./", documentUrl);
+  const bridgeSrc = new URL("./module_bridge.js", document.baseURI).href;
+  const assetToken = new URL(location.href).searchParams.get("asset_token");
+  const sdkUrl = new URL("/api/plugin/page/bridge-sdk.js", location.origin);
+  if (assetToken) sdkUrl.searchParams.set("asset_token", assetToken);
+  sdkUrl.searchParams.set("theme", document.documentElement.dataset.theme || "light");
+  const panelBootstrap = '<script id="zhiban-panel-bootstrap">document.documentElement.dataset.zhibanEmbedded="true";document.documentElement.dataset.zhibanHostFrame="true";</script>';
+  return source
+    .replace(/<base\b[^>]*>/gi, "")
+    .replace(/<script\b[^>]*\bsrc=["'][^"']*\/api\/plugin\/page\/bridge-sdk\.js[^"']*["'][^>]*>\s*<\/script>/gi, "")
+    .replace(/<script\b[^>]*\bsrc=["'][^"']*\/?module_bridge\.js[^"']*["'][^>]*>\s*<\/script>/gi, "")
+    .replace(/<head\b[^>]*>/i, (head) => `${head}<base href="${moduleBase.href}">${panelBootstrap}<script src="${sdkUrl.href}"></script><script id="zhiban-module-adapter" src="${bridgeSrc}" data-module-key="${moduleKey}"></script>`);
 }
 
 function renderProcessModule(item, state) {
@@ -451,9 +564,13 @@ function renderProcessModule(item, state) {
 function renderWorkbench(item = moduleById(activeKey)) {
   const state = moduleStates.get(item.key);
   if (item.page && (!state || state.state === "running")) {
-    navigatePage(new URL(`modules/${item.page}/index.html`, document.baseURI).href, item.label);
+    settingsWorkspace.hidden = true;
+    settingsWorkspace.replaceChildren();
+    workspace.hidden = false;
+    createModuleFrameElement(item);
     return;
   }
+  detachModuleFrame();
   settingsWorkspace.hidden = true;
   settingsWorkspace.replaceChildren();
   workspace.hidden = false;
@@ -1316,6 +1433,7 @@ function selectModule(key, updateUrl = true) {
 
 function cancelPendingFrames() {
   settingsRequest += 1;
+  detachModuleFrame();
   settingsWorkspace.hidden = true;
   settingsWorkspace.replaceChildren();
   workspace.hidden = false;
@@ -1441,7 +1559,6 @@ refresh.addEventListener("click", () => {
   if (activeView === "overview") void refreshStatus();
   else if (activeView === "global") void renderGlobalSettings();
   else if (activeView === "settings") void renderSettings(activeKey);
-
   else void refreshStatus();
 });
 overviewTabs.addEventListener("click", (event) => {
@@ -1458,6 +1575,7 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pagehide", () => {
   cleanupPageObservers();
+  detachModuleFrame();
 });
 
 const initialParams = new URLSearchParams(location.search);

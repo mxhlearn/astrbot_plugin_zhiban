@@ -14,3 +14,6 @@ dist/
 /pytest-of-*/
 /astrbot_plugin_zhiban/views/知伴/modules/
 /astrbot_plugin_zhiban/views/知伴/.zhiban_generated_assets.json
+
+node_modules/
+.tmp/

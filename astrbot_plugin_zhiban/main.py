@@ -16,7 +16,7 @@ from astrbot.api.web import request as plugin_request
 
 from .catalog import MODULES, ordered_modules
 from .scheduling import BudgetScheduler
-from .ui_assets import MODULE_UI_ROOTS, prepare_module_ui_html, resolve_module_ui_asset
+from .ui_assets import MODULE_UI_ROOTS, resolve_module_ui_asset
 from .module_api import dashboard_session_authorized, module_api_target
 from .settings_service import (
     SettingsConflictError,
@@ -560,20 +560,19 @@ class ZhibanPlugin(Star):
             return JSONResponse({"status": "error", "message": "模块接口调用失败"}, status_code=500)
 
     async def _serve_module_ui_asset(self, module: str, asset_path: str):
+        # UI HTML is materialized by build_views, which already injects the
+        # first-paint theme, module adapter and SDK before business scripts.
+        # Serve those files verbatim so both direct and signed asset routes use
+        # the same controlled artifact, without re-injecting through handlers.
         if module not in MODULE_UI_ROOTS:
             return JSONResponse({"status": "error", "message": "模块页面不存在"}, status_code=404)
         path = resolve_module_ui_asset(Path(__file__).parent, module, asset_path)
         if path is None:
             return JSONResponse({"status": "error", "message": "页面资源不存在"}, status_code=404)
-        if path.name.lower() == "index.html":
-            html = path.read_text(encoding="utf-8")
-            plugin_name = MODULE_UI_ROOTS[module][0]
-            depth = 2 + len(Path(asset_path).parent.parts)
-            bridge_src = "../" * depth + "module_bridge.js"
-            return HTMLResponse(
-                prepare_module_ui_html(html, plugin_name, module_bridge_src=bridge_src)
-            )
-        return FileResponse(path, headers={"X-Content-Type-Options": "nosniff"})
+        headers = {"X-Content-Type-Options": "nosniff"}
+        if path.suffix.lower() == ".html":
+            headers["Cache-Control"] = "no-store, max-age=0"
+        return FileResponse(path, headers=headers)
 
     @filter.on_waiting_llm_request(priority=1000000)
     async def admit(self, event: AstrMessageEvent):

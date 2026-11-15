@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import re
 import sys
@@ -85,7 +86,19 @@ class BuildViewsTests(unittest.TestCase):
         self.assertIn("statusRequestInFlight", app_source)
         self.assertIn("runViewUpdate", app_source)
         self.assertIn('@view-transition { navigation: auto; }', index_source)
-        self.assertIn("navigatePage(new URL(`modules/${item.page}/index.html`", app_source)
+        self.assertIn("createModuleFrameElement(item)", app_source)
+        self.assertNotIn("navigatePage(new URL(`modules/${item.page}/index.html`", app_source)
+        self.assertIn("frame.setAttribute(\"sandbox\", \"allow-scripts allow-forms allow-downloads\")", app_source)
+        self.assertIn("frame.srcdoc = rewriteModuleDocument(source, pageUrl.href, item.key)", app_source)
+        self.assertIn("const sdkUrl = new URL(\"/api/plugin/page/bridge-sdk.js\", location.origin)", app_source)
+        self.assertIn("const bridgeSrc = new URL(\"./module_bridge.js\", document.baseURI).href", app_source)
+        self.assertIn("zhiban-panel-bootstrap", app_source)
+        self.assertIn('documentElement.dataset.zhibanHostFrame=\"true\"', app_source)
+        self.assertIn('data-module-key="${moduleKey}"', app_source)
+        self.assertIn("pageUrl.searchParams.set(\"embedded\", \"frame\")", app_source)
+        self.assertIn("pageUrl.searchParams.set(\"zhiban_panel\", \"1\")", app_source)
+        self.assertIn("fetch(pageUrl.href", app_source)
+        self.assertIn("zhiban:app-ready", app_source)
         bridge_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "module_bridge.js").read_text(encoding="utf-8")
         self.assertIn("zhiban-shell-style", bridge_source)
         self.assertIn("配置当前模块", bridge_source)
@@ -122,6 +135,51 @@ class BuildViewsTests(unittest.TestCase):
                 "astrbot_plugin_qqprofile",
             ):
                 self.assertIn(repo, source)
+
+    def test_chat_interaction_source_uses_zhiban_brand_and_green_theme(self):
+        root = Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "modules" / "astrbot_plugin_angel_heart"
+        source_root = root / "webui" / "src"
+        panel = (source_root / "ChatConfigPanel.vue").read_text(encoding="utf-8")
+        fields = (source_root / "fields.ts").read_text(encoding="utf-8")
+        theme = (source_root / "theme.ts").read_text(encoding="utf-8")
+        app = (source_root / "App.vue").read_text(encoding="utf-8")
+        main = (source_root / "main.ts").read_text(encoding="utf-8")
+        webui_index = (root / "webui" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('class="brand">聊天互动</div>', panel)
+        self.assertIn('<title>聊天互动</title>', webui_index)
+        self.assertIn('<h2>对话运行状态</h2>', panel)
+        self.assertNotIn('天使之心', panel)
+        self.assertNotIn('AngelHeart', fields)
+        self.assertNotIn('天使之心', fields)
+        self.assertIn('知伴|小知', fields)
+        self.assertIn("#2f6b4f", theme)
+        self.assertIn("#f5f8f4", theme)
+        self.assertIn("#f5f8f4", app)
+        self.assertIn("document.documentElement.dataset.zhibanModule = 'heart'", main)
+        self.assertIn("app.provide(themeKey, createThemeApi())", main)
+        self.assertIn('新建对话策略', panel)
+        self.assertIn('重命名对话策略', panel)
+        self.assertIn('还没有对话策略', panel)
+        self.assertNotIn('新建配置模板', panel)
+        self.assertNotIn('模板名称', panel)
+        self.assertNotIn('theme-toggle', panel)
+        self.assertNotIn("toggleTheme", panel)
+        build_root = root / "pages" / "chat-config"
+        built_index = (build_root / "index.html").read_text(encoding="utf-8")
+        self.assertIn("<title>聊天互动</title>", built_index)
+        built_js_name = re.search(r'src="\./assets/(index-[^"]+\.js)"', built_index)
+        built_css_name = re.search(r'href="\./assets/(style-[^"]+\.css)"', built_index)
+        self.assertIsNotNone(built_js_name)
+        self.assertIsNotNone(built_css_name)
+        built_js = build_root / "assets" / built_js_name.group(1)
+        built_css = build_root / "assets" / built_css_name.group(1)
+        bundled = built_index + built_js.read_text(encoding="utf-8") + built_css.read_text(encoding="utf-8")
+        self.assertNotIn("天使之心", bundled)
+        self.assertNotIn("AngelHeart", bundled)
+        self.assertIn("#2f6b4f", bundled)
+        self.assertIn("聊天互动", bundled)
+        self.assertIn("新建对话策略", bundled)
+        self.assertNotIn("theme-toggle", bundled)
 
     def test_qq_profile_source_keeps_status_signature_and_license(self):
         root = Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "modules" / "astrbot_plugin_qqprofile"
@@ -175,15 +233,95 @@ class BuildViewsTests(unittest.TestCase):
             view_root = Path(temp) / "views" / "知伴"
             result = build_views_module.build_views(plugin_root, view_root=view_root)
             manifest = __import__("json").loads((view_root / ".zhiban_generated_assets.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["schema_version"], 2)
+            adaptations = manifest["adaptations"]
+            adapted_assets = adaptations["adapted_assets"]
+            adapted_paths = {item["path"]: item for item in adapted_assets}
+
+            self.assertEqual(manifest["schema_version"], 3)
+            self.assertEqual(manifest["generated_files"], sorted(manifest["generated_files"]))
+            self.assertEqual(len(manifest["generated_files"]), len(set(manifest["generated_files"])))
             self.assertEqual(len(manifest["generated_files"]), result["files"])
-            self.assertTrue(manifest["adaptations"]["unchanged_non_html_assets"])
-            self.assertEqual(manifest["adaptations"]["mode"], "authenticated SDK and module bridge injection")
-            self.assertIn("reduced-motion", manifest["adaptations"]["motion"])
+            self.assertTrue(adaptations["unchanged_non_html_assets"])
+            self.assertEqual(
+                adaptations["non_html_policy"],
+                "only registered adaptations may differ; all other non-HTML resources "
+                "are copied byte-for-byte",
+            )
+            self.assertEqual(adaptations["mode"], "authenticated SDK and module bridge injection")
+            self.assertEqual(
+                adaptations["theme"],
+                "first-paint head CSS plus module_bridge.js controlled light-green overrides",
+            )
+            self.assertIn("reduced-motion", adaptations["motion"])
+
+            expected_html = {
+                path for path in manifest["generated_files"] if path.endswith("/index.html")
+            }
+            self.assertEqual(
+                {path for path in adapted_paths if path.endswith("/index.html")},
+                expected_html,
+            )
+            self.assertLessEqual(set(adapted_paths), set(manifest["generated_files"]))
+            adapted_non_html = [item for item in adapted_assets if not item["path"].endswith("/index.html")]
+            self.assertTrue(adapted_non_html)
+            self.assertTrue(all(item["path"].startswith("heart/") for item in adapted_non_html))
+
+            for path, item in adapted_paths.items():
+                with self.subTest(path=path):
+                    self.assertEqual(
+                        set(item),
+                        {"path", "sha256", "reason", "source"},
+                    )
+                    self.assertRegex(item["sha256"], r"^[0-9a-f]{64}$")
+                    self.assertTrue(item["reason"])
+                    self.assertTrue(item["source"])
+                    generated = view_root / "modules" / path
+                    self.assertEqual(
+                        item["sha256"],
+                        hashlib.sha256(generated.read_bytes()).hexdigest(),
+                    )
+                    if path.endswith("/index.html"):
+                        self.assertIn("module_bridge.js", generated.read_text(encoding="utf-8"))
+                    else:
+                        source = plugin_root / "modules" / item["source"]
+                        self.assertEqual(item["sha256"], hashlib.sha256(source.read_bytes()).hexdigest())
+
             for path in manifest["generated_files"]:
+                if path in adapted_paths:
+                    continue
+                module, relative = path.split("/", 1)
+                source_root = plugin_root / "modules" / Path(
+                    *build_views_module.MODULE_UI_ROOTS[module]
+                )
                 if path.endswith("/index.html"):
-                    page = (view_root / "modules" / path).read_text(encoding="utf-8")
-                    self.assertIn("module_bridge.js", page)
+                    self.assertIn("module_bridge.js", (view_root / "modules" / path).read_text(encoding="utf-8"))
+                else:
+                    self.assertEqual(
+                        (view_root / "modules" / path).read_bytes(),
+                        (source_root / relative).read_bytes(),
+                    )
+
+    def test_adapted_non_html_assets_cannot_be_copied_without_manifest_entries(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "modules" / "astrbot_plugin_angel_heart" / "pages" / "chat-config"
+            source.mkdir(parents=True)
+            (source / "index.html").write_text("<html><head></head></html>", encoding="utf-8")
+            (source / "assets").mkdir()
+            (source / "assets" / "unregistered.js").write_text("rebuilt", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "missing from the manifest"):
+                build_views_module.build_views(
+                    root,
+                    view_root=root / "views" / "知伴",
+                    mapping={
+                        "heart": (
+                            "astrbot_plugin_angel_heart",
+                            "pages",
+                            "chat-config",
+                        )
+                    },
+                )
 
     def test_materializes_selected_page_with_sdk_adapter_before_app_scripts(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -1,7 +1,7 @@
 name: astrbot_plugin_zhiban
 display_name: 知伴
 desc: 运行于 AstrBot 的知伴整合应用，支持 OneBot v11（aiocqhttp）和 Windows/Linux；用五个一级入口管理聊天、记忆、表达创作与 QQ 社交，并统一模块状态、配置和生命周期。
-version: 0.3.1
+version: 0.3.2
 author: mxhlearn
 astrbot_version: '>=4.29.3,<4.30'
 support_platforms:

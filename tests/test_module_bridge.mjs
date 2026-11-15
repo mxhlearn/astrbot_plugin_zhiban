@@ -21,24 +21,35 @@ async function createBridge(moduleKey = "meme") {
     onContext: () => () => {},
   };
   const listeners = new Map();
-  const window = { AstrBotPluginView: original, AstrBotPluginPage: original, location: { href: "http://127.0.0.1/views/知伴/_t/token/modules/meme/index.html" } };
+  const posts = [];
+  const window = {
+    AstrBotPluginView: original,
+    AstrBotPluginPage: original,
+    location: { href: "http://127.0.0.1/views/知伴/_t/token/modules/meme/index.html", origin: "null" },
+    parent: { postMessage: (message, origin) => posts.push({ message, origin }) },
+    addEventListener: () => {},
+  };
   const document = {
     currentScript: {
       dataset: { moduleKey },
       src: "http://127.0.0.1/views/知伴/_t/token/module_bridge.js",
     },
     readyState: "loading",
+    documentElement: { dataset: {} },
+    getElementById: () => null,
     head: { append() {} },
     createElement: (tagName) => ({ tagName, textContent: "" }),
     addEventListener: (name, listener) => listeners.set(name, listener),
   };
-  vm.runInNewContext(source, { window, document, URL, Map, Object, String, Promise, Error, Number });
-  return { bridge: window.AstrBotPluginView, calls, listeners };
+  vm.runInNewContext(source, { window, document, URL, location: window.location, Map, Object, String, Promise, Error, Number });
+  return { bridge: window.AstrBotPluginView, calls, listeners, posts };
 }
 
 test("direct page adapter routes APIs through the selected module", async () => {
-  const { bridge, calls } = await createBridge("meme");
+  const { bridge, calls, posts } = await createBridge("meme");
   assert.equal((await bridge.ready()).pluginName, "meme_manager");
+  assert.equal(posts[0].message.kind, "ready");
+  assert.equal(posts[0].message.module, "meme");
   assert.equal(bridge.getContext().pageTitle, "表情互动");
   assert.deepEqual(await bridge.apiGet("meme_manager/packs", { page: 1 }), { data: "ui/module_api/meme/packs" });
   assert.deepEqual(calls[0], ["get", "ui/module_api/meme/packs", { page: 1 }]);

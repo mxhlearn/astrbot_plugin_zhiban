@@ -1,4 +1,5 @@
 (() => {
+  const CHANNEL = 'astrbot-plugin-page';
   const modules = [
     { key: 'heart', label: '聊天互动', logo: 'heart.png', page: true, group: '聊天系统', groupKey: 'chat' },
     { key: 'memory', label: '记忆成长', logo: 'memory.png', page: true, group: '记忆成长', groupKey: 'memory' },
@@ -20,13 +21,29 @@
   ];
   const apiNames = { heart: 'astrbot_plugin_angel_heart', memory: 'astrbot_plugin_livingmemory', meme: 'meme_manager', tts: 'astrbot_plugin_breeze_tts', brush: 'astrbot_plugin_angel_brush', music: 'astrbot_plugin_listen_music', eye: 'astrbot_plugin_angel_eye', qzone: 'astrbot_plugin_qzone_ultra', qqprofile: 'astrbot_plugin_qqprofile' };
   const appPluginName = 'astrbot_plugin_zhiban';
-  const moduleScript = document.currentScript;
-  const embedded = new URL(window.location.href).searchParams.get('embedded') === '1';
+  const moduleScript = document.currentScript || document.querySelector('script[data-module-key]');
+  const embedded = document.documentElement.dataset.zhibanEmbedded === 'true' || new URL(window.location.href).searchParams.get('embedded') === 'frame';
   const moduleKey = moduleScript?.dataset.moduleKey;
   const viewRoot = new URL('.', moduleScript.src);
   const current = modules.find((item) => item.key === moduleKey);
   const original = window.AstrBotPluginView || window.AstrBotPluginPage;
   if (!current || !original) return;
+
+  function installFirstPaintTheme() {
+    if (!document.documentElement?.dataset) return;
+    document.documentElement.dataset.zhibanEmbedded = embedded ? 'true' : 'shell';
+    if (!document.getElementById('zhiban-first-paint')) {
+      const early = document.createElement('style');
+      early.id = 'zhiban-first-paint';
+      early.textContent = `
+        html[data-zhiban-embedded="true"] { color-scheme:light;--bg-app:#f5f8f4;--bg-sidebar:#eef5ec;--bg-card:#fff;--bg-hover:#e7f0e7;--accent-light:#ddeedc;--graph-surface:#f8fbf7;--border-light:#dce6da;--border-normal:#bdcfbb;--text-primary:#24382c;--text-secondary:#617367;--text-tertiary:#718477;--text-inverse:#fff;--accent:#2f6b4f;--accent-hover:#24563f;--primary-color:#2f6b4f;--primary:#2f6b4f;--accent-color:#2f6b4f;--link-color:#2f6b4f;background:#f5f8f4!important;color:#24382c!important; }
+        html[data-zhiban-embedded="true"] body { background:#f5f8f4!important;color:#24382c!important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif!important; }
+        html[data-zhiban-embedded="true"] :is(.n-button--primary-type,.btn-primary,.button-primary,.el-button--primary,.ant-btn-primary) { background:#2f6b4f!important;border-color:#2f6b4f!important;color:#fff!important; }
+      `;
+      (document.head || document.documentElement).append(early);
+    }
+  }
+  installFirstPaintTheme();
 
   function modulePath(endpoint) {
     let value = String(endpoint || '').trim().replace(/^\/+/, '');
@@ -47,6 +64,16 @@
     return { ...(context || {}), pluginName: apiNames[moduleKey], displayName: '知伴', pageName: moduleKey, pageTitle: current.label, locale: context?.locale || 'zh-CN' };
   }
 
+  let bridgeReadySent = false;
+  function emitBridgeReady() {
+    if (bridgeReadySent) return;
+    bridgeReadySent = true;
+    window.parent.postMessage(
+      { channel: CHANNEL, kind: 'ready', module: moduleKey },
+      location.origin === 'null' ? '*' : location.origin,
+    );
+  }
+
   const bridged = Object.create(original);
   Object.assign(bridged, {
     async ready() { if (typeof original.ready === 'function') await original.ready(); return moduleContext(original.getContext?.()); },
@@ -65,6 +92,16 @@
     unsubscribeSSE(subscriptionId) { return original.unsubscribeSSE(subscriptionId); },
   });
   window.AstrBotPluginView = window.AstrBotPluginPage = bridged;
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window.parent) return;
+    if (event.origin !== window.location.origin && event.origin !== 'null') return;
+    const message = event.data;
+    if (!message || message.channel !== CHANNEL || message.kind !== 'response') return;
+    if (!message.ok) {
+      console.error('[知伴] module bridge request failed:', message.error || 'unknown error');
+    }
+  });
 
   const style = document.createElement('style');
   style.id = 'zhiban-shell-style';
@@ -366,6 +403,21 @@
     document.head.append(style);
   }
 
+  function notifyAppReady() {
+    if (!embedded) return;
+    const context = original.getContext?.() || {};
+    const token = context.appReadyToken || document.documentElement.dataset.appReadyToken || (moduleKey + '-' + Date.now());
+    document.documentElement.dataset.appReadyToken = token;
+    document.documentElement.dataset.appReady = 'true';
+    window.parent.postMessage({
+      channel: CHANNEL,
+      kind: 'app:ready',
+      module: moduleKey,
+      token,
+      title: current && current.label ? current.label : '',
+    }, location.origin === 'null' ? '*' : location.origin);
+  }
+
   async function start() {
     const cached = embedded ? null : readStatusCache();
     let order = modules;
@@ -381,8 +433,10 @@
     await bridged.ready();
     if (embedded) {
       installEmbeddedTheme();
+      notifyAppReady();
       return;
     }
+    if (window.parent !== window && document.documentElement.dataset.zhibanHostFrame === 'true') return;
     if (cached) return;
     try {
       const result = await original.apiGet('ui/status');
@@ -397,6 +451,7 @@
     renderNavigation(order, states);
   }
 
+  emitBridgeReady();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => void start(), { once: true });
   else void start();
 })();
