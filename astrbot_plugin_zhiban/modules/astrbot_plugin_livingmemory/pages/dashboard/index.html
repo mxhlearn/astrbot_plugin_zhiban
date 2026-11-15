@@ -11,13 +11,9 @@
   </head>
   <body>
     <div id="app">
-      <!-- Sidebar -->
-      <aside class="sidebar">
-        <div class="sidebar-brand" aria-label="记忆成长">
-          <span class="brand-mark">忆</span>
-          <span class="brand-name"><strong>记忆成长</strong><strong>知伴</strong></span>
-        </div>
-        <nav class="sidebar-nav">
+      <!-- Navigation -->
+      <aside class="sidebar" aria-label="模块导航">
+        <nav class="sidebar-nav" aria-label="模块页面">
           <button class="nav-item active" data-page="graph" data-i18n-aria="nav.graph">
             <i data-lucide="network" aria-hidden="true"></i>
             <span data-i18n="nav.graph">Knowledge Graph</span>
@@ -39,17 +35,11 @@
             <span data-i18n="nav.prompts">Prompts</span>
           </button>
           <button class="nav-item" data-page="settings" data-i18n-aria="nav.settings">
-            <i data-lucide="palette" aria-hidden="true"></i>
+            <i data-lucide="square-pen" aria-hidden="true"></i>
             <span data-i18n="nav.settings">Settings</span>
           </button>
         </nav>
-        <div class="sidebar-divider"></div>
-        <div class="sidebar-footer">
-          <button class="nav-item" id="theme-toggle" data-i18n-aria="header.theme" aria-haspopup="dialog" aria-controls="appearance-dialog">
-            <i data-lucide="palette" aria-hidden="true"></i>
-            <span data-i18n="header.theme">Theme</span>
-          </button>
-          <details class="lang-menu" id="lang-menu">
+        <details class="lang-menu" id="lang-menu">
           <summary class="nav-item" id="lang-toggle" data-i18n-aria="header.lang">
             <i data-lucide="languages" aria-hidden="true"></i>
             <span id="lang-label" data-i18n="header.lang">Language</span>
@@ -60,8 +50,7 @@
             <button type="button" class="lang-option" data-lang="ru">Русский</button>
             <button type="button" class="lang-option" data-lang="ja">日本語</button>
           </div>
-          </details>
-        </div>
+        </details>
       </aside>
 
       <!-- Main Content -->
@@ -70,13 +59,16 @@
         <!-- Page: Graph -->
         <section class="page active" id="page-graph">
           <header class="page-header">
-            <div class="page-heading"><span class="page-index">01</span><span class="page-title" data-i18n="nav.graph">Knowledge Graph</span></div>
+            <div class="page-heading"><span class="page-title" data-i18n="nav.graph">Knowledge Graph</span></div>
             <div class="page-actions">
               <select id="graph-view-mode" class="input input-sm" data-i18n-aria="graph.viewMode" style="width:auto">
                 <option value="2d" data-i18n="graph.view2d">2D</option>
                 <option value="3d" data-i18n="graph.view3d">3D</option>
               </select>
-              <button class="btn btn-secondary btn-sm" id="graph-reset-view" data-i18n="graph.resetView">Reset view</button>
+              <button class="btn btn-secondary btn-sm" id="graph-reset-view" data-i18n-aria="graph.resetView">
+                <i data-lucide="rotate-ccw" aria-hidden="true"></i>
+                <span data-i18n="graph.resetView">Reset view</span>
+              </button>
               <input type="text" id="graph-session-filter" list="graph-session-options" data-i18n-aria="graph.sessionPh" class="input input-sm" data-i18n-placeholder="graph.sessionPh" placeholder="Session ID" style="width:180px" />
               <datalist id="graph-session-options"></datalist>
               <button class="btn btn-secondary btn-sm" id="graph-overview-btn" data-i18n-aria="graph.overviewBtn">
@@ -119,7 +111,7 @@
         <!-- Page: Memory -->
         <section class="page" id="page-memory">
           <header class="page-header">
-            <div class="page-heading"><span class="page-index">02</span><span class="page-title" data-i18n="nav.memory">Memories</span></div>
+            <div class="page-heading"><span class="page-title" data-i18n="nav.memory">Memories</span></div>
             <button id="mem-refresh" class="btn btn-secondary btn-sm"><i data-lucide="refresh-cw" aria-hidden="true"></i><span data-i18n="common.refresh">Refresh</span></button>
           </header>
           <div class="page-body memory-page-body">
@@ -247,7 +239,7 @@
         <!-- Page: Recall Test -->
         <section class="page" id="page-recall">
           <header class="page-header">
-            <div class="page-heading"><span class="page-index">03</span><span class="page-title" data-i18n="nav.recall">Recall Test</span></div>
+            <div class="page-heading"><span class="page-title" data-i18n="nav.recall">Recall Test</span></div>
           </header>
           <div class="page-body">
             <div class="recall-form-section">
@@ -281,7 +273,7 @@
         <!-- Page: System -->
         <section class="page" id="page-system">
           <header class="page-header">
-            <div class="page-heading"><span class="page-index">04</span><span class="page-title" data-i18n="nav.system">System Overview</span></div>
+            <div class="page-heading"><span class="page-title" data-i18n="nav.system">System Overview</span></div>
           </header>
           <div class="page-body">
             <div id="system-feedback" class="request-feedback" role="status" aria-live="polite" hidden>
@@ -333,7 +325,7 @@
         <!-- Page: Prompts -->
         <section class="page" id="page-prompts">
           <header class="page-header">
-            <div class="page-heading"><span class="page-index">05</span><span class="page-title" data-i18n="nav.prompts">Prompt Management</span></div>
+            <div class="page-heading"><span class="page-title" data-i18n="nav.prompts">Prompt Management</span></div>
           </header>
           <div class="page-body">
             <div id="prompt-feedback" class="request-feedback" role="status" aria-live="polite" hidden>
@@ -364,7 +356,7 @@
         <!-- Page: Settings (advanced config moved out of the host page) -->
         <section class="page" id="page-settings">
           <header class="page-header">
-            <div class="page-heading"><span class="page-index">06</span><span class="page-title" data-i18n="nav.settings">Settings</span></div>
+            <div class="page-heading"><span class="page-title" data-i18n="nav.settings">Settings</span></div>
           </header>
           <div class="page-body">
             <div id="settings-feedback" class="request-feedback" role="status" aria-live="polite" hidden>
@@ -397,55 +389,6 @@
       </form>
     </dialog>
 
-    <!-- Appearance preferences apply immediately and remain local to this browser. -->
-    <dialog id="appearance-dialog" class="appearance-dialog" aria-labelledby="appearance-title" aria-describedby="appearance-hint">
-      <form method="dialog">
-        <header class="appearance-header">
-          <h2 id="appearance-title" data-i18n="header.theme">Appearance</h2>
-          <button class="btn btn-ghost btn-sm" data-i18n-aria="common.close" autofocus><i data-lucide="x" aria-hidden="true"></i></button>
-        </header>
-        <p id="appearance-hint" data-i18n="appearance.hint">Changes apply immediately and are saved in this browser.</p>
-        <fieldset>
-          <legend data-i18n="appearance.style">Visual style</legend>
-          <div class="appearance-styles">
-            <label class="appearance-card">
-              <input type="radio" name="appearance-style" value="editorial" />
-              <span class="appearance-preview preview-editorial" aria-hidden="true"><span class="preview-nav"></span><span class="preview-main"><span></span><span></span><span></span></span></span>
-              <strong data-i18n="appearance.editorial">Editorial</strong>
-              <span class="appearance-description" data-i18n="appearance.editorialDesc"></span>
-            </label>
-            <label class="appearance-card">
-              <input type="radio" name="appearance-style" value="studio" />
-              <span class="appearance-preview preview-studio" aria-hidden="true"><span class="preview-nav"></span><span class="preview-main"><span></span><span></span><span></span></span></span>
-              <strong data-i18n="appearance.studio">Studio</strong>
-              <span class="appearance-description" data-i18n="appearance.studioDesc"></span>
-            </label>
-            <label class="appearance-card">
-              <input type="radio" name="appearance-style" value="paper" />
-              <span class="appearance-preview preview-paper" aria-hidden="true"><span class="preview-nav"></span><span class="preview-main"><span></span><span></span><span></span></span></span>
-              <strong data-i18n="appearance.paper">Paper</strong>
-              <span class="appearance-description" data-i18n="appearance.paperDesc"></span>
-            </label>
-            <label class="appearance-card">
-              <input type="radio" name="appearance-style" value="terminal" />
-              <span class="appearance-preview preview-terminal" aria-hidden="true"><span class="preview-nav"></span><span class="preview-main"><span></span><span></span><span></span></span></span>
-              <strong data-i18n="appearance.terminal">Terminal</strong>
-              <span class="appearance-description" data-i18n="appearance.terminalDesc"></span>
-            </label>
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend data-i18n="appearance.mode">Color mode</legend>
-          <div class="appearance-modes">
-            <label><input type="radio" name="appearance-mode" value="system" /><span data-i18n="appearance.system">Auto</span></label>
-            <label><input type="radio" name="appearance-mode" value="light" /><span data-i18n="appearance.light">Light</span></label>
-            <label><input type="radio" name="appearance-mode" value="dark" /><span data-i18n="appearance.dark">Dark</span></label>
-          </div>
-          <p class="appearance-mode-hint" data-i18n="appearance.systemHint">Auto follows AstrBot, or your device when opened independently.</p>
-        </fieldset>
-        <footer class="appearance-footer"><button class="btn btn-primary" data-i18n="common.close">Close</button></footer>
-      </form>
-    </dialog>
 
     <!-- Peek Panel -->
     <div class="peek-overlay" id="peek-overlay"></div>

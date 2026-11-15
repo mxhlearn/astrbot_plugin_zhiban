@@ -72,7 +72,7 @@ async function createBridge(moduleKey = "meme", { withSdk = false } = {}) {
   });
   const message = listeners.get("message");
   const sendFromHost = (data) => message({ source: window.parent, data: { channel: CHANNEL, ...data } });
-  return { bridge: window.AstrBotPluginView, calls, listeners, posts, sendFromHost };
+  return { bridge: window.AstrBotPluginView, calls, listeners, posts, sendFromHost, root: document.documentElement };
 }
 
 async function answerReady(bridge, token = "tok-1") {
@@ -105,6 +105,22 @@ test("sandboxed module gets a self-contained bridge without the official SDK", a
   assert.equal(context.pageTitle, "表情互动");
   assert.equal(bridge.bridge.getLocale(), "zh-CN");
   assert.equal(bridge.calls.length, 0);
+});
+
+test("host context applies the shared dark palette before module mount", async () => {
+  const bridge = await createBridge("memory");
+  const ready = bridge.bridge.ready();
+  bridge.sendFromHost({
+    kind: "context",
+    context: { pluginName: "astrbot_plugin_livingmemory", pageTitle: "记忆成长", locale: "zh-CN", isDark: true },
+  });
+  await ready;
+  assert.equal(bridge.root.dataset.theme, "dark");
+  bridge.sendFromHost({
+    kind: "context",
+    context: { pluginName: "astrbot_plugin_livingmemory", pageTitle: "记忆成长", locale: "zh-CN", isDark: false },
+  });
+  assert.equal(bridge.root.dataset.theme, "light");
 });
 
 test("host transport keeps API, upload, download and SSE inside the module scope", async () => {

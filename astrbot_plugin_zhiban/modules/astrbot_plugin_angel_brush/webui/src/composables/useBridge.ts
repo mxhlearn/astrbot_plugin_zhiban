@@ -14,12 +14,15 @@ interface BridgeContext {
   pageTitle: string
   locale: string
   i18n: Record<string, unknown>
+  isDark?: boolean
 }
 
 interface Bridge {
   ready(): Promise<BridgeContext>
   getContext(): BridgeContext
   getLocale(): string
+  getI18n(): Record<string, unknown>
+  onContext(handler: (context: BridgeContext) => void): () => void
   apiGet(endpoint: string, params?: Record<string, unknown>): Promise<unknown>
   apiPost(endpoint: string, body?: unknown): Promise<unknown>
   upload(endpoint: string, file: File): Promise<unknown>

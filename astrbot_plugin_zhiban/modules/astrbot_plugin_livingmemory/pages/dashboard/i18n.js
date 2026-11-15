@@ -32,22 +32,6 @@
     "language.toast":     { zh: "语言：{0}", en: "Language: {0}", ru: "Язык: {0}" },
 
     /* ---- Appearance ---- */
-    "header.theme": {"zh": "外观与主题", "en": "Appearance", "ru": "Оформление"},
-    "appearance.hint": {"zh": "选择即刻生效；偏好保存在当前浏览器。", "en": "Changes apply immediately and are saved in this browser.", "ru": "Изменения применяются сразу и сохраняются в этом браузере."},
-    "appearance.style": {"zh": "视觉风格", "en": "Visual style", "ru": "Визуальный стиль"},
-    "appearance.mode": {"zh": "明暗模式", "en": "Color mode", "ru": "Цветовой режим"},
-    "appearance.system": {"zh": "自动", "en": "Auto", "ru": "Авто"},
-    "appearance.light": {"zh": "浅色", "en": "Light", "ru": "Светлый"},
-    "appearance.dark": {"zh": "深色", "en": "Dark", "ru": "Тёмный"},
-    "appearance.systemHint": {"zh": "自动模式跟随 AstrBot；独立打开时跟随设备。", "en": "Auto follows AstrBot, or your device when opened independently.", "ru": "Авто следует теме AstrBot, а при отдельном открытии — теме устройства."},
-    "appearance.editorial": {"zh": "Editorial · 原野", "en": "Editorial", "ru": "Editorial"},
-    "appearance.editorialDesc": {"zh": "经典网格 · 醒目标题 · 利落线条", "en": "Classic grid, bold headlines, crisp lines", "ru": "Классическая сетка, крупные заголовки, чёткие линии"},
-    "appearance.studio": {"zh": "Studio · 轻盈", "en": "Studio", "ru": "Studio"},
-    "appearance.studioDesc": {"zh": "柔和圆角 · 蓝紫色调 · 悬浮卡片", "en": "Soft corners, indigo accents, floating cards", "ru": "Скругления, индиго, парящие карточки"},
-    "appearance.paper": {"zh": "Paper · 书页", "en": "Paper", "ru": "Paper"},
-    "appearance.paperDesc": {"zh": "暖纸色调 · 衬线标题 · 阅读留白", "en": "Warm paper, serif headings, room to read", "ru": "Тёплая бумага, заголовки с засечками, простор"},
-    "appearance.terminal": {"zh": "Terminal · 终端", "en": "Terminal", "ru": "Terminal"},
-    "appearance.terminalDesc": {"zh": "等宽字体 · 硬朗边框 · 仪表布局", "en": "Monospace type, sharp borders, instrument panels", "ru": "Моноширинный шрифт, строгие рамки, приборные панели"},
 
     /* ---- Workflow feedback ---- */
     "flow.resetFilters": {"zh": "重置筛选", "en": "Reset filters", "ru": "Сбросить фильтры"},
@@ -433,21 +417,6 @@
 
   /* Japanese translations, merged into MSG so every entry keeps one shape. */
   const MSG_JA = {
-    "appearance.dark": "ダーク",
-    "appearance.editorial": "Editorial · 原野",
-    "appearance.editorialDesc": "クラシックなグリッド · 力強い見出し · シャープなライン",
-    "appearance.hint": "変更はすぐに反映され、設定はこのブラウザに保存されます。",
-    "appearance.light": "ライト",
-    "appearance.mode": "カラーモード",
-    "appearance.paper": "Paper · ページ",
-    "appearance.paperDesc": "暖かな紙色 · セリフ見出し · 読書余白",
-    "appearance.studio": "Studio · 軽やか",
-    "appearance.studioDesc": "柔らかな角丸 · 藍紫系 · フローティングカード",
-    "appearance.style": "ビジュアルスタイル",
-    "appearance.system": "自動",
-    "appearance.systemHint": "自動は AstrBot に従い、単独で開いた場合は端末に従います。",
-    "appearance.terminal": "Terminal · 端末",
-    "appearance.terminalDesc": "等幅フォント · 硬質な枠線 · ダッシュボード配置",
     "atom.entity": "エンティティ",
     "atom.event": "出来事",
     "atom.preference": "好み",
@@ -617,7 +586,6 @@
     "graph.visibleNodes": "ノード {0} / {1}",
     "graph2d.moduleFail": "2D グラフモジュールが読み込まれていません。ページを再読み込みしてください。",
     "header.lang": "言語",
-    "header.theme": "外観とテーマ",
     "language.toast": "言語：{0}",
     "memory.deleteFailed": "記憶の削除に失敗しました",
     "memory.deleted": "記憶を削除しました",

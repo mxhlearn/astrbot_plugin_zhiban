@@ -101,12 +101,34 @@ def test_dashboard_prefers_persona_summary_for_display() -> None:
     assert "detail.summary || detail.text" in utils
 
 
-def test_graph_toolbar_has_intermediate_desktop_breakpoints() -> None:
+def test_dashboard_uses_compact_host_layout_instead_of_internal_sidebar() -> None:
     css = (DASHBOARD / "art-direction.css").read_text(encoding="utf-8")
+    index = (DASHBOARD / "index.html").read_text(encoding="utf-8")
 
-    assert "@media (min-width: 769px) and (max-width: 1600px)" in css
-    assert "grid-column: 1 / -1" in css
-    assert "#graph-query-input" in css
+    assert "--header-height: 52px" in css
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in css
+    assert ".graph-toolbar" in css and "grid-row: 4" in css
+    assert "236px" not in css
+    assert "zoom:" not in css
+    assert "sidebar-brand" not in index
+    assert "page-index" not in index
+    assert "graph-space-controls" in index
+
+
+def test_dashboard_has_no_independent_appearance_or_theme_cache() -> None:
+    index = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+    app = (DASHBOARD / "app.js").read_text(encoding="utf-8")
+    appearance = (DASHBOARD / "appearance.js").read_text(encoding="utf-8")
+    themes = (DASHBOARD / "themes.css").read_text(encoding="utf-8")
+
+    for marker in ("appearance-dialog", "theme-toggle", "data-style"):
+        assert marker not in index
+    for marker in ("LMAppearance", "lmem_theme", "lmem_style", "dataset.style"):
+        assert marker not in app
+    assert "localStorage" not in appearance
+    assert "matchMedia" not in appearance
+    assert "data-style" not in themes
+    assert "appearance-dialog" not in themes
 
 
 def test_summary_prompts_keep_persona_voice_and_single_summary_output() -> None:

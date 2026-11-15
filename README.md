@@ -7,11 +7,11 @@
 
 **把分散的 AstrBot QQ 机器人能力，整理成一个真正可用的中文应用。**
 
-[![Version](https://img.shields.io/badge/version-0.3.3-2f6b4f?style=flat-square)](astrbot_plugin_zhiban/metadata.yaml)
+[![Version](https://img.shields.io/badge/version-0.3.4-2f6b4f?style=flat-square)](astrbot_plugin_zhiban/metadata.yaml)
 [![AstrBot](https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square)](https://github.com/AstrBotDevs/AstrBot)
 [![OneBot](https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square)](#兼容矩阵)
 [![Python](https://img.shields.io/badge/Python-3.12-3f7560?style=flat-square)](#本地开发)
-[![Tests](https://img.shields.io/badge/tests-102%20Python%20%2B%2021%20Node-2f6b4f?style=flat-square)](#质量与验证)
+[![Tests](https://img.shields.io/badge/tests-106%20Python%20%2B%2023%20Node-2f6b4f?style=flat-square)](#质量与验证)
 [![License](https://img.shields.io/badge/license-mixed%20%2F%20review%20required-8c5917?style=flat-square)](astrbot_plugin_zhiban/README.md)
 
 [快速开始](#快速开始) · [功能模块](#十个运行模块) · [完整文档](astrbot_plugin_zhiban/README.md)
@@ -48,7 +48,9 @@
 
 - 桌面左栏导航；窄屏自动切换为顶部导航。
 - 白色内容区、浅绿背景、深绿主操作，固定品牌语义。
-- 响应式规则覆盖 1024、768、390 像素；本轮在 1024 桌面视口完成工作台验收，窄屏未重新做视觉回归。
+- 记忆成长内页改为 52 px 紧凑业务页签，标题 20–24 px、统计横排，图谱与搜索图例保持正常文档流。
+- 图片创作统一知伴浅绿并跟随宿主明暗；记忆与图片页面均不提供独立外观入口或本地主题缓存。
+- 1440、1024、768、390 px 已完成主外壳、记忆成长与图片创作的视觉和横向溢出回归；其余工作台完成登录态进入与配置检查。
 - 模块正文在知伴内容面板内切换，顶部五入口与侧栏不重绘。
 - 模块的浅绿首帧、桥接 adapter 与 SDK 顺序由构建产物控制；状态就绪需由真实 bridge 事件确认，不以定时器代替。
 
@@ -136,17 +138,19 @@
 
 ## 质量与验证
 
-- **Python**：102 项测试通过，另有 31 个子测试通过。
-- **Node**：21 项测试通过。
+- **Python**：106 项测试通过，另有 32 个子测试通过。
+- **Node**：23 项测试通过。
 - **页面**：登录态下检查五入口、浅绿首帧、模块挂载、快速切换与配置页；Linux 实际部署仍待目标环境验收。
 - **配置安全**：并发冲突、密钥脱敏、显式清除、保存/应用、无修改反馈均有回归。
 - **竞态**：快速并发跳转最终停留在最后目标，旧页面结果不覆盖新页面。
+- **主题**：主应用浅色/深色切换即时传递到记忆成长和图片创作；两页均无独立外观入口或旧本地缓存。
+- **切换**：20 次一级入口往返后仅保留 1 个工作台 frame，无串页。
 - **工作台**：本机登录态下七个模块完成页面读取、桥接握手与界面挂载；图片创作无供应商、QQ 动态 Cookie 失效时显示对应受限状态。
 - **构建**：资源清单、ZIP 和 SHA-256 校验流程可用；具体文件数以构建产物为准。
 
-本地构建产物：`dist/zhiban-0.3.3.zip`（`dist/` 不进入 Git；可从 Release Assets 或本地构建取得）
+本地构建产物：`dist/zhiban-0.3.4.zip`（30,937,817 字节；`dist/` 不进入 Git）。SHA-256：`fcaee15f37be3ebd9ea08913587e5957ae6cb26e5d7d068de14f3f307accdb0d`
 
-发布包 SHA-256：由构建流程生成，具体值以实际产物为准。
+发布包 SHA-256：`fcaee15f37be3ebd9ea08913587e5957ae6cb26e5d7d068de14f3f307accdb0d`
 
 ## AI 辅助开发
 

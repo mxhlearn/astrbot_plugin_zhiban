@@ -147,7 +147,7 @@ function makePayload(nodeCount, edgeCount) {
   return { enabled: true, mode: "query", snapshot: { nodes, edges } };
 }
 
-test("changing visual style invalidates the graph background without rebuilding layout", () => {
+test("changing host theme invalidates the graph background without rebuilding layout", () => {
   loadGraph();
   let onThemeChange;
   let observedAttributes;
@@ -157,8 +157,7 @@ test("changing visual style invalidates the graph background without rebuilding 
   };
   const graph = global.window.Graph2D;
   graph.init(makeContainer());
-  assert.ok(observedAttributes.includes("data-style"));
-  assert.ok(observedAttributes.includes("data-theme"));
+  assert.deepEqual(observedAttributes, ["data-theme"]);
   graph.renderer.drawBackground(false, false);
   assert.ok(graph.renderer._bgCacheKey);
   const layout = graph.animator._layout;

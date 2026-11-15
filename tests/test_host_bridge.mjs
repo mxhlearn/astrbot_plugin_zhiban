@@ -10,9 +10,12 @@ async function createBridge() {
   const listeners = new Map();
   const calls = [];
   let sseHandlers;
+  let contextHandler;
+  let parentContext = { locale: "zh-CN", isDark: false };
   const parent = {
     ready: async () => ({}),
-    getContext: () => ({ locale: "zh-CN" }),
+    getContext: () => parentContext,
+    onContext: (handler) => { contextHandler = handler; return () => { contextHandler = null; }; },
     apiGet: async (endpoint, params) => {
       calls.push(["get", endpoint, params]);
       return { endpoint, ok: true };
@@ -75,7 +78,11 @@ async function createBridge() {
     origin: window.location.origin,
     data: { channel: "astrbot-plugin-page", ...data },
   });
-  return { window, parent, calls, frame, sent, events, detach, sseHandlers: () => sseHandlers, sendFromChild };
+  const emitContext = (next) => {
+    parentContext = { ...parentContext, ...(next || {}) };
+    contextHandler?.(parentContext);
+  };
+  return { window, parent, calls, frame, sent, events, detach, emitContext, sseHandlers: () => sseHandlers, sendFromChild };
 }
 
 test("shell broker proxies child API requests through the authenticated Zhiban route", async () => {
@@ -154,6 +161,18 @@ test("shell broker preserves upload, download and SSE lifecycle", async () => {
 
   await bridge.sendFromChild({ kind: "request", requestId: "x", action: "sse:unsubscribe", subscriptionId: "child-1" });
   assert.deepEqual(bridge.calls.at(-1), ["unsubscribe", "host-subscription"]);
+});
+
+test("parent theme changes are broadcast to the active module frame", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready" });
+  bridge.sent.length = 0;
+  bridge.emitContext({ isDark: true });
+  assert.equal(bridge.sent.at(-1).message.kind, "context");
+  assert.equal(bridge.sent.at(-1).message.context.isDark, true);
+  assert.equal(bridge.sent.at(-1).origin, "*");
+  bridge.emitContext({ isDark: false });
+  assert.equal(bridge.sent.at(-1).message.context.isDark, false);
 });
 
 test("shell distinguishes bridge readiness, app mount and sanitized app errors", async () => {

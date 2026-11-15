@@ -29,7 +29,7 @@ def build():
             if not p.is_file():
                 continue
             parts = p.relative_to(PLUGIN).parts
-            if set(parts) & {"__pycache__", ".pytest_cache", ".git", "node_modules", "tests"}:
+            if set(parts) & {"__pycache__", ".pytest_cache", ".git", "node_modules", "tests", ".buildtmp"}:
                 continue
 
             if p.suffix in {".pyc", ".db", ".sqlite3", ".log"} or p.name.startswith(".env"):

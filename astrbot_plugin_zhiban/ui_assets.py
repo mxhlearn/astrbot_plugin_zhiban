@@ -29,6 +29,65 @@ MODULE_API_NAMES = {
 }
 
 
+# 知伴宿主主题的单一浅绿语义调色板。模块页首帧、深色切换和桥接覆盖共用
+# 这套变量；模块不得再维护自己的风格预设或明暗偏好。
+HOST_PALETTE = {
+    "light": {
+        "--bg-app": "#f5f8f4", "--bg-base": "#f5f8f4", "--bg-sidebar": "#eef5ec",
+        "--bg-card": "#ffffff", "--bg-hover": "#e7f0e7", "--bg-active": "#ddeedc",
+        "--bg-input": "#ffffff", "--bg-overlay": "rgba(255,255,255,.94)", "--bg-tint": "#eef5ec",
+        "--bg-toolbar": "#ffffff", "--bg-table-head": "#eef5ec", "--screen-overlay": "rgba(30,50,38,.24)",
+        "--graph-surface": "#f8fbf7", "--border-light": "#dce6da", "--border-normal": "#bdcfbb",
+        "--border-color": "#dce6da", "--border-focus": "#2f6b4f", "--text-primary": "#24382c",
+        "--text-secondary": "#617367", "--text-tertiary": "#718477", "--text-inverse": "#ffffff",
+        "--accent": "#2f6b4f", "--accent-color": "#2f6b4f", "--accent-light": "#ddeedc",
+        "--accent-hover": "#24563f", "--signal": "#9dc7ac", "--signal-soft": "#e8f3e7",
+        "--coral": "#9b5c46", "--cyan": "#3f7661", "--gold": "#b07b36",
+        "--success": "#2f6b4f", "--success-light": "#ddeedc", "--warning": "#8a5a1f",
+        "--warning-light": "#f7ecd9", "--danger": "#b0443f", "--danger-light": "#f8e4e1",
+        "--danger-hover": "#8f342f", "--node-topic": "#78a94b", "--node-person": "#2a9e96",
+        "--node-fact": "#c58c2a", "--node-summary": "#df6d62", "--node-other": "#74868a",
+        "--primary-color": "#2f6b4f", "--primary": "#2f6b4f", "--link-color": "#2f6b4f",
+    },
+    "dark": {
+        "--bg-app": "#111811", "--bg-base": "#111811", "--bg-sidebar": "#162117",
+        "--bg-card": "#1b261c", "--bg-hover": "#243528", "--bg-active": "#2a3f2d",
+        "--bg-input": "#1b261c", "--bg-overlay": "rgba(17,24,17,.95)", "--bg-tint": "#162117",
+        "--bg-toolbar": "#1b261c", "--bg-table-head": "#162117", "--screen-overlay": "rgba(0,0,0,.55)",
+        "--graph-surface": "#131c14", "--border-light": "#354637", "--border-normal": "#4b6150",
+        "--border-color": "#354637", "--border-focus": "#8fc7a5", "--text-primary": "#eef5ef",
+        "--text-secondary": "#aebbad", "--text-tertiary": "#91a394", "--text-inverse": "#101611",
+        "--accent": "#8fc7a5", "--accent-color": "#8fc7a5", "--accent-light": "#263a2b",
+        "--accent-hover": "#b3d9c1", "--signal": "#b3d9c1", "--signal-soft": "#263a2b",
+        "--coral": "#d79a84", "--cyan": "#6fb59a", "--gold": "#d3a35b",
+        "--success": "#8fc7a5", "--success-light": "#203427", "--warning": "#e4b066",
+        "--warning-light": "#3b2d19", "--danger": "#f08b84", "--danger-light": "#3c211f",
+        "--danger-hover": "#f6aaa4", "--node-topic": "#8fbe62", "--node-person": "#56b8ae",
+        "--node-fact": "#d9a64c", "--node-summary": "#e88276", "--node-other": "#92a4a8",
+        "--primary-color": "#8fc7a5", "--primary": "#8fc7a5", "--link-color": "#8fc7a5",
+    },
+}
+
+
+def _palette_css(selector: str, palette: dict[str, str]) -> str:
+    return selector + "{" + ";".join(f"{key}:{value}" for key, value in palette.items()) + "}"
+
+
+def host_theme_css() -> str:
+    """Return the shared first-paint palette used before module scripts run."""
+    light = _palette_css(":root", HOST_PALETTE["light"])
+    dark = _palette_css(':root[data-theme="dark"]', HOST_PALETTE["dark"])
+    return (
+        light
+        + dark
+        + ":root{color-scheme:light}html{background:var(--bg-app);color:var(--text-primary)}"
+        + "body{background:var(--bg-app);color:var(--text-primary)}"
+        + ':root[data-theme="dark"]{color-scheme:dark}'
+        + ":is(.n-button--primary-type,.btn-primary,.button-primary,.el-button--primary,.ant-btn-primary)"
+        + "{background:var(--accent);border-color:var(--accent);color:var(--text-inverse)}"
+    )
+
+
 def resolve_module_ui_asset(plugin_root: Path, module: str, asset_path: str) -> Path | None:
     """Return a file only from a mapped UI directory, rejecting path traversal."""
     mapping = MODULE_UI_ROOTS.get(module)
@@ -268,7 +327,7 @@ def prepare_module_ui_html(
     first_paint = '<meta name="view-transition" content="same-origin">'
     first_paint += '<meta name="color-scheme" content="light">'
     first_paint += '<meta name="zhiban-runtime-marker" content="module">'
-    first_paint += "<style id=\"zhiban-head-theme\">:root{color-scheme:light;--bg-app:#f5f8f4;--bg-sidebar:#eef5ec;--bg-card:#fff;--bg-hover:#e7f0e7;--accent-light:#ddeedc;--graph-surface:#f8fbf7;--border-light:#dce6da;--border-normal:#bdcfbb;--text-primary:#24382c;--text-secondary:#617367;--text-tertiary:#718477;--text-inverse:#fff;--accent:#2f6b4f;--accent-hover:#24563f;--primary-color:#2f6b4f;--primary:#2f6b4f;--accent-color:#2f6b4f;--link-color:#2f6b4f}html{background:#f5f8f4;color:#24382c}body{background:#f5f8f4;color:#24382c}:is(.n-button--primary-type,.btn-primary,.button-primary,.el-button--primary,.ant-btn-primary){background:#2f6b4f;border-color:#2f6b4f;color:#fff}</style>"
+    first_paint += f'<style id="zhiban-head-theme">{host_theme_css()}</style>'
     script = '<script src="/api/plugin/page/bridge-sdk.js"></script>'
     if module_key:
         script += f'<script id="zhiban-module-adapter" src="{module_bridge_src}" data-module-key="{module_key}"></script>'

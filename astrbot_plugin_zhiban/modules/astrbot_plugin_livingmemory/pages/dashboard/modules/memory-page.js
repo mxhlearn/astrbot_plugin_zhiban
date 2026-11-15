@@ -595,13 +595,13 @@ export class MemoryPage {
    */
   initEventListeners() {
     if (typeof MutationObserver !== "undefined") {
-      this._appearanceObserver = new MutationObserver(() => {
+      this._themeObserver = new MutationObserver(() => {
         this._measuredRowHeight = null;
         this._visibleSlice = null;
         if (document.getElementById("memories-scroll")?.clientWidth) this.scheduleVirtualRender();
       });
-      this._appearanceObserver.observe(document.documentElement, {
-        attributes: true, attributeFilter: ["data-style", "data-theme"],
+      this._themeObserver.observe(document.documentElement, {
+        attributes: true, attributeFilter: ["data-theme"],
       });
     }
     document.getElementById("memory-retry")?.addEventListener("click", () => this.fetch());

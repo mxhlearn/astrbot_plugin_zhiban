@@ -64,6 +64,16 @@ class ModuleUiAssetTests(unittest.TestCase):
         self.assertIn("module_bridge.js", result)
         self.assertIn("zhibanEmbedded===\"true\"", result)
 
+    def test_first_paint_palette_includes_host_dark_tokens(self):
+        source = '<html><head><script src="./app.js"></script></head><body></body></html>'
+        result = ui_assets.prepare_module_ui_html(source, "astrbot_plugin_livingmemory")
+        self.assertIn(':root[data-theme="dark"]', result)
+        self.assertIn("--bg-app:#111811", result)
+        self.assertIn("--accent:#8fc7a5", result)
+        self.assertIn("--node-topic:#8fbe62", result)
+        self.assertIn("--bg-app:#f5f8f4", result)
+        self.assertIn("--accent:#2f6b4f", result)
+
     def test_generated_bootstrap_is_idempotent_and_preserves_embedded_marker(self):
         source = '<html><head><script src="./app.js"></script></head><body></body></html>'
         once = ui_assets.prepare_module_ui_html(source, "astrbot_plugin_angel_brush")

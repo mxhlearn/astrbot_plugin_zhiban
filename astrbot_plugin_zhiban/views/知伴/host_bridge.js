@@ -59,6 +59,35 @@
     frame.contentWindow.postMessage(message, origin);
   }
 
+  function frameContext(state) {
+    const parentContext = bridge()?.getContext?.() || {};
+    return {
+      pluginName: MODULE_API_NAMES[state.module],
+      displayName: "知伴",
+      pageName: state.module,
+      pageTitle: state.label,
+      locale: parentContext.locale || "zh-CN",
+      i18n: parentContext.i18n || {},
+      isDark: parentContext.isDark,
+      appReadyToken: state.appReadyToken,
+    };
+  }
+
+  function broadcastContext() {
+    for (const [frame, state] of frames) {
+      if (state.destroyed) continue;
+      post(frame, { channel: CHANNEL, kind: "context", context: frameContext(state) });
+    }
+  }
+
+  let contextSubscribed = false;
+  function subscribeContext() {
+    const api = bridge();
+    if (contextSubscribed || typeof api?.onContext !== "function") return;
+    contextSubscribed = true;
+    api.onContext(() => broadcastContext());
+  }
+
   function cloneableData(value, fallback = {}) {
     if (value === undefined) return fallback;
     try {
@@ -210,21 +239,7 @@
       if (firstReady) {
         frame.dispatchEvent(new CustomEvent("zhiban:bridge-ready", { detail: { module: state.module } }));
       }
-      const parentContext = bridge()?.getContext?.() || {};
-      post(frame, {
-        channel: CHANNEL,
-        kind: "context",
-        context: {
-          pluginName: MODULE_API_NAMES[state.module],
-          displayName: "知伴",
-          pageName: state.module,
-          pageTitle: state.label,
-          locale: parentContext.locale || "zh-CN",
-          i18n: parentContext.i18n || {},
-          isDark: parentContext.isDark,
-          appReadyToken: state.appReadyToken,
-        },
-      });
+      post(frame, { channel: CHANNEL, kind: "context", context: frameContext(state) });
       return;
     }
     if (message.kind !== "request" || typeof message.requestId !== "string") return;
@@ -235,6 +250,8 @@
       sendError(frame, message.requestId, error);
     }
   });
+
+  subscribeContext();
 
   window.ZhibanBridge = {
     apiGet: async (path, params) => {
@@ -250,6 +267,7 @@
       return api.apiPost(appEndpoint(path), body);
     },
     attachFrame(frame, module, label) {
+      subscribeContext();
       const previous = frames.get(frame);
       if (previous) void cleanupFrame(frame, previous);
       const state = { module, label, subscriptions: new Map(), loaded: false, bridgeReady: false, appReady: false, destroyed: false, lastError: null, appReadyToken: `${module}-${Date.now()}` };

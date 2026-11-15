@@ -43,17 +43,68 @@
     };
   }
 
+  const HOST_PALETTE = {
+    light: {
+      '--bg-app': '#f5f8f4', '--bg-base': '#f5f8f4', '--bg-sidebar': '#eef5ec',
+      '--bg-card': '#ffffff', '--bg-hover': '#e7f0e7', '--bg-active': '#ddeedc',
+      '--bg-input': '#ffffff', '--bg-overlay': 'rgba(255,255,255,.94)', '--bg-tint': '#eef5ec',
+      '--bg-toolbar': '#ffffff', '--bg-table-head': '#eef5ec', '--screen-overlay': 'rgba(30,50,38,.24)',
+      '--graph-surface': '#f8fbf7', '--border-light': '#dce6da', '--border-normal': '#bdcfbb',
+      '--border-color': '#dce6da', '--border-focus': '#2f6b4f', '--text-primary': '#24382c',
+      '--text-secondary': '#617367', '--text-tertiary': '#718477', '--text-inverse': '#ffffff',
+      '--accent': '#2f6b4f', '--accent-color': '#2f6b4f', '--accent-light': '#ddeedc',
+      '--accent-hover': '#24563f', '--signal': '#9dc7ac', '--signal-soft': '#e8f3e7',
+      '--coral': '#9b5c46', '--cyan': '#3f7661', '--gold': '#b07b36',
+      '--success': '#2f6b4f', '--success-light': '#ddeedc', '--warning': '#8a5a1f',
+      '--warning-light': '#f7ecd9', '--danger': '#b0443f', '--danger-light': '#f8e4e1',
+      '--danger-hover': '#8f342f', '--node-topic': '#78a94b', '--node-person': '#2a9e96',
+      '--node-fact': '#c58c2a', '--node-summary': '#df6d62', '--node-other': '#74868a',
+      '--primary-color': '#2f6b4f', '--primary': '#2f6b4f', '--link-color': '#2f6b4f',
+    },
+    dark: {
+      '--bg-app': '#111811', '--bg-base': '#111811', '--bg-sidebar': '#162117',
+      '--bg-card': '#1b261c', '--bg-hover': '#243528', '--bg-active': '#2a3f2d',
+      '--bg-input': '#1b261c', '--bg-overlay': 'rgba(17,24,17,.95)', '--bg-tint': '#162117',
+      '--bg-toolbar': '#1b261c', '--bg-table-head': '#162117', '--screen-overlay': 'rgba(0,0,0,.55)',
+      '--graph-surface': '#131c14', '--border-light': '#354637', '--border-normal': '#4b6150',
+      '--border-color': '#354637', '--border-focus': '#8fc7a5', '--text-primary': '#eef5ef',
+      '--text-secondary': '#aebbad', '--text-tertiary': '#91a394', '--text-inverse': '#101611',
+      '--accent': '#8fc7a5', '--accent-color': '#8fc7a5', '--accent-light': '#263a2b',
+      '--accent-hover': '#b3d9c1', '--signal': '#b3d9c1', '--signal-soft': '#263a2b',
+      '--coral': '#d79a84', '--cyan': '#6fb59a', '--gold': '#d3a35b',
+      '--success': '#8fc7a5', '--success-light': '#203427', '--warning': '#e4b066',
+      '--warning-light': '#3b2d19', '--danger': '#f08b84', '--danger-light': '#3c211f',
+      '--danger-hover': '#f6aaa4', '--node-topic': '#8fbe62', '--node-person': '#56b8ae',
+      '--node-fact': '#d9a64c', '--node-summary': '#e88276', '--node-other': '#92a4a8',
+      '--primary-color': '#8fc7a5', '--primary': '#8fc7a5', '--link-color': '#8fc7a5',
+    },
+  };
+
+  function paletteCss(selector, palette) {
+    const vars = Object.entries(palette).map(([key, value]) => `${key}:${value}!important`).join(';');
+    return `${selector}{${vars}}`;
+  }
+
+  function applyHostTheme(next) {
+    if (typeof next?.isDark !== 'boolean' || !rootElement?.dataset) return;
+    rootElement.dataset.theme = next.isDark ? 'dark' : 'light';
+    if (rootElement.style) rootElement.style.colorScheme = rootElement.dataset.theme;
+  }
+
   function installFirstPaintTheme() {
     if (!rootElement?.dataset) return;
     rootElement.dataset.zhibanEmbedded = embedded ? 'true' : 'shell';
     if (!document.getElementById('zhiban-first-paint')) {
       const early = document.createElement('style');
       early.id = 'zhiban-first-paint';
-      early.textContent = `
-        html[data-zhiban-embedded="true"] { color-scheme:light;--bg-app:#f5f8f4;--bg-sidebar:#eef5ec;--bg-card:#fff;--bg-hover:#e7f0e7;--accent-light:#ddeedc;--graph-surface:#f8fbf7;--border-light:#dce6da;--border-normal:#bdcfbb;--text-primary:#24382c;--text-secondary:#617367;--text-tertiary:#718477;--text-inverse:#fff;--accent:#2f6b4f;--accent-hover:#24563f;--primary-color:#2f6b4f;--primary:#2f6b4f;--accent-color:#2f6b4f;--link-color:#2f6b4f;background:#f5f8f4!important;color:#24382c!important; }
-        html[data-zhiban-embedded="true"] body { background:#f5f8f4!important;color:#24382c!important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif!important; }
-        html[data-zhiban-embedded="true"] :is(.n-button--primary-type,.btn-primary,.button-primary,.el-button--primary,.ant-btn-primary) { background:#2f6b4f!important;border-color:#2f6b4f!important;color:#fff!important; }
-      `;
+      early.textContent = [
+        paletteCss('html[data-zhiban-embedded="true"]', HOST_PALETTE.light),
+        paletteCss('html[data-zhiban-embedded="true"][data-theme="dark"]', HOST_PALETTE.dark),
+        'html[data-zhiban-embedded="true"] { color-scheme:light;background:var(--bg-app)!important;color:var(--text-primary)!important; }',
+        'html[data-zhiban-embedded="true"][data-theme="dark"] { color-scheme:dark; }',
+        'html[data-zhiban-embedded="true"] body { background:var(--bg-app)!important;color:var(--text-primary)!important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif!important; }',
+        'html[data-zhiban-embedded="true"] :is(.n-button--primary-type,.btn-primary,.button-primary,.el-button--primary,.ant-btn-primary) { background:var(--accent)!important;border-color:var(--accent)!important;color:var(--text-inverse)!important; }',
+      ].join('\n');
       (document.head || document.documentElement).append(early);
     }
   }
@@ -115,6 +166,7 @@
 
   function settleReady(nextContext) {
     context = moduleContext({ ...context, ...(nextContext || {}) });
+    applyHostTheme(context);
     if (context.appReadyToken) rootElement.dataset.appReadyToken = context.appReadyToken;
     if (readyTimer) window.clearTimeout(readyTimer);
     readyTimer = null;
@@ -548,7 +600,7 @@
         --zb-embed-muted: #617367;
         --zb-embed-line: #dce6da;
       }
-      html, body { background: var(--zb-embed-bg) !important; color: var(--zb-embed-text) !important; }
+      html, body { background: var(--bg-app, var(--zb-embed-bg)) !important; color: var(--text-primary, var(--zb-embed-text)) !important; }
       body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif !important; }
       a { color: var(--zb-embed-green); }
       button, input, select, textarea { font-family: inherit !important; }
@@ -567,6 +619,25 @@
       .replace(/Bearer\s+[^\s]+/gi, 'Bearer ***')
       .replace(/sk-[A-Za-z0-9_-]{8,}/g, 'sk-***')
       .slice(0, 240);
+  }
+
+  function installRuntimeErrorForwarding() {
+    if (!embedded || window.__zhibanRuntimeErrorsBound) return;
+    window.__zhibanRuntimeErrorsBound = true;
+    const benignRuntimeWarning = (detail) => /ResizeObserver loop (?:completed|limit exceeded)|Script error\.|AbortError|The operation was aborted/i.test(String(detail || ''));
+    window.addEventListener('error', (event) => {
+      // Resource load errors have a DOM target; they are not script failures.
+      if (event?.target && event.target !== window) return;
+      const detail = event?.error?.message || event?.message || '模块脚本执行失败';
+      if (benignRuntimeWarning(detail)) return;
+      sendAppError('runtime', detail);
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event?.reason;
+      const detail = reason?.message || String(reason || '模块异步任务失败');
+      if (benignRuntimeWarning(detail)) return;
+      sendAppError('runtime', detail);
+    });
   }
 
   function meaningfulUiMounted() {
@@ -652,6 +723,7 @@
 
   async function startEmbedded() {
     installEmbeddedTheme();
+    installRuntimeErrorForwarding();
     try {
       await bridged.ready();
     } catch (error) {

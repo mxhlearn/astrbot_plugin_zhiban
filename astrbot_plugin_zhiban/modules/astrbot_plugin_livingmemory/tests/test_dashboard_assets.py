@@ -193,3 +193,29 @@ def test_dashboard_hides_inactive_panels_from_keyboard_navigation() -> None:
     assert 'panel.setAttribute("aria-hidden", "false")' in peek_panel
     assert 'panel.setAttribute("inert", "")' in peek_panel
     assert 'panel.setAttribute("aria-hidden", "true")' in peek_panel
+
+def test_dashboard_mobile_layout_keeps_graph_controls_usable() -> None:
+    css = (DASHBOARD / "art-direction.css").read_text(encoding="utf-8")
+
+    assert "@media (max-width: 768px)" in css
+    assert "@media (max-width: 560px)" in css
+    assert "#graph-session-filter" in css
+    assert "flex: 1 1 110px" in css
+    assert "grid-template-rows: auto minmax(240px, 1fr) auto auto" in css
+    assert ".page-title" in css and "min-width: 0" in css
+
+def test_dashboard_sources_have_no_legacy_appearance_cache_or_controls() -> None:
+    sources = [
+        DASHBOARD / "index.html",
+        *sorted(DASHBOARD.glob("*.js")),
+        *sorted(DASHBOARD.glob("*.css")),
+        *sorted((DASHBOARD / "modules").glob("*.js")),
+    ]
+    markers = ("lmem_theme", "lmem_style", "theme-toggle", "appearance-dialog", "data-style")
+    offenders = [
+        f"{path.name}:{marker}"
+        for path in sources
+        for marker in markers
+        if marker in path.read_text(encoding="utf-8")
+    ]
+    assert not offenders, f"遗留外观控制/缓存: {offenders}"

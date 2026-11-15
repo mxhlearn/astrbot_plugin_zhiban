@@ -60,7 +60,6 @@ let statusPollTimer = null;
 let schedulerStatus = null;
 let settingsControlSequence = 0;
 let draftGuard = null;
-let navigationStarted = false;
 let activeModuleFrame = null;
 let activeModuleFrameDetach = null;
 let activeModuleBridgeTimer = null;
@@ -111,31 +110,6 @@ function writeStatusCache(data) {
   const raw = JSON.stringify(snapshot);
   try { sessionStorage.setItem(STATUS_CACHE_KEY, raw); } catch { /* opaque sandbox origin */ }
   window.name = STATUS_CACHE_PREFIX + raw;
-}
-
-function canonicalTarget(href) {
-  const url = new URL(href, location.href);
-  const params = [...url.searchParams.entries()]
-    .filter(([key]) => !["asset_token", "theme"].includes(key))
-    .sort(([a], [b]) => a.localeCompare(b));
-  return url.origin + decodeURIComponent(url.pathname) + "?" + new URLSearchParams(params).toString();
-}
-
-function markNavigationPending(label) {
-  navigationStarted = true;
-  document.documentElement.dataset.navigating = "true";
-  status.textContent = label ? `正在打开${label}…` : "正在切换…";
-  status.className = "status starting";
-  configButton.disabled = true;
-}
-
-function navigatePage(href, label = "") {
-  if (navigationStarted) return false;
-  const target = new URL(href, location.href).href;
-  if (canonicalTarget(target) === canonicalTarget(location.href)) return false;
-  markNavigationPending(label);
-  window.location.replace(target);
-  return true;
 }
 
 function runViewUpdate(update) {
@@ -1552,7 +1526,6 @@ function setView(view) {
 
 function renderActiveView() {
   cancelPendingFrames();
-  if (navigationStarted) return;
   if (activeView === "overview") {
     renderGlobalOverview();
     return;

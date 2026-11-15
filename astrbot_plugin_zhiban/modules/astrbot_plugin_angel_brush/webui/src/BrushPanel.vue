@@ -12,14 +12,6 @@
     >
       <div class="sider-inner" :class="{ collapsed }">
         <div class="sider-header">
-          <button
-            class="theme-toggle"
-            type="button"
-            :title="isDark ? '切换到光模式' : '切换到暗模式'"
-            @click="toggleTheme()"
-          >
-            <Icon :icon="isDark ? 'lucide:sun' : 'lucide:moon'" />
-          </button>
           <div v-if="!collapsed" class="brand">图片创作</div>
         </div>
         <n-scrollbar class="sider-scroll">
@@ -33,7 +25,7 @@
           />
         </n-scrollbar>
         <div v-if="!collapsed" class="sider-footer">
-          <span class="foot-hint">angel_image_generate / angel_image_edit</span>
+          <span class="foot-hint">生成图片 / 编辑图片</span>
         </div>
       </div>
     </n-layout-sider>
@@ -91,7 +83,7 @@
                   </div>
                 </div>
 
-                <n-grid :cols="2" :x-gap="12" :y-gap="10" responsive="screen" collapsed-rows="1">
+                <n-grid cols="1 s:2" :x-gap="12" :y-gap="10" responsive="screen" collapsed-rows="1">
                   <n-gi>
                     <n-form-item label="名称" :show-feedback="false" style="margin-bottom: 0">
                       <n-input v-model:value="p.name" placeholder="如：OpenAI Images" />
@@ -102,7 +94,7 @@
                       <n-select v-model:value="p.provider_type" :options="kindOptions" />
                     </n-form-item>
                   </n-gi>
-                  <n-gi :span="2">
+                  <n-gi span="1 s:2">
                     <n-form-item label="Base URL" :show-feedback="false" style="margin-bottom: 0">
                       <n-input v-model:value="p.base_url" placeholder="https://api.openai.com/v1" />
                     </n-form-item>
@@ -117,7 +109,7 @@
                       <n-switch v-model:value="p.watermark" />
                     </n-form-item>
                   </n-gi>
-                  <n-gi :span="2">
+                  <n-gi span="1 s:2">
                     <n-form-item label="API Keys" :show-feedback="false" style="margin-bottom: 0">
                       <div class="key-row">
                         <n-tag
@@ -142,7 +134,7 @@
                     <div class="hint">支持多 key 轮询，空则不鉴权</div>
                   </n-gi>
                   <template v-if="p.provider_type === 'comfyui'">
-                    <n-gi :span="2">
+                    <n-gi span="1 s:2">
                       <n-form-item label="ComfyUI Workflow JSON" :show-feedback="false" style="margin-bottom: 0">
                         <n-input v-model:value="p.comfyui_workflow_json" type="textarea" :autosize="{ minRows: 3 }" placeholder='{"prompt":...}' />
                       </n-form-item>
@@ -172,7 +164,7 @@
                       删除模型 {{ m.name || m.model }}？
                     </n-popconfirm>
                   </div>
-                  <n-grid :cols="2" :x-gap="10" :y-gap="8">
+                  <n-grid cols="1 s:2" :x-gap="10" :y-gap="8" responsive="screen">
                     <n-gi>
                       <n-form-item label="显示名" :show-feedback="false" style="margin-bottom: 0">
                         <n-input v-model:value="m.name" placeholder="如：GPT Image 1" />
@@ -251,10 +243,10 @@
             </template>
           </template>
 
-          <!-- 工具测试：两工具全参数透传，编辑支持本地上传 -->
+          <!-- 图片创作：两工具全参数透传，编辑支持本地上传 -->
           <template v-else-if="!bridgeMessage">
             <div class="content-header">
-              <h2>工具测试</h2>
+              <h2>图片创作</h2>
               <n-button @click="refreshGenerated">
                 <template #icon><Icon icon="lucide:refresh-cw" /></template>
                 刷新已生成
@@ -264,7 +256,7 @@
 
             <n-tabs type="line" animated :value="toolTab" @update:value="(v: string) => toolTab = v as any">
               <!-- 生图 -->
-              <n-tab-pane name="generate" tab="angel_image_generate">
+              <n-tab-pane name="generate" tab="生成图片">
                 <n-card class="setting-card">
                   <n-form label-placement="top">
                     <n-form-item label="生图模型（留空则用功能设置中的默认）">
@@ -276,7 +268,7 @@
                     <n-form-item label="negative_prompt">
                       <n-input v-model:value="genForm.negative_prompt" type="textarea" :autosize="{ minRows: 1, maxRows: 3 }" placeholder="不希望出现的内容" />
                     </n-form-item>
-                    <n-grid :cols="2" :x-gap="10" :y-gap="6">
+                    <n-grid cols="1 s:2" :x-gap="10" :y-gap="6" responsive="screen">
                       <n-gi><n-form-item label="分辨率 (size / resolution)"><n-input v-model:value="genForm.size" placeholder="1024x1024" clearable /></n-form-item></n-gi>
                       <n-gi><n-form-item label="快捷尺寸"><n-select v-model:value="genForm.size" :options="resOptions" placeholder="选择预设" clearable /></n-form-item></n-gi>
                       <n-gi><n-form-item label="宽高比 (aspect_ratio)"><n-input v-model:value="genForm.aspect_ratio" placeholder="如 16:9 / 1:1" clearable /></n-form-item></n-gi>
@@ -288,7 +280,7 @@
                   <div class="test-actions">
                     <n-button type="primary" :loading="genTesting" @click="doGenTest(true)">
                       <template #icon><Icon icon="lucide:flask-conical" /></template>
-                      Mock 生成
+                      模拟生成
                     </n-button>
                     <n-button :loading="genTesting" @click="doGenTest(false)">
                       <template #icon><Icon icon="lucide:sparkles" /></template>
@@ -306,7 +298,7 @@
               </n-tab-pane>
 
               <!-- 编辑 -->
-              <n-tab-pane name="edit" tab="angel_image_edit">
+              <n-tab-pane name="edit" tab="编辑图片">
                 <n-card class="setting-card">
                   <n-form label-placement="top">
                     <n-form-item label="生图模型（留空则用默认）">
@@ -356,7 +348,7 @@
                         </div>
                       </div>
                     </n-form-item>
-                    <n-grid :cols="2" :x-gap="10" :y-gap="6">
+                    <n-grid cols="1 s:2" :x-gap="10" :y-gap="6" responsive="screen">
                       <n-gi><n-form-item label="分辨率（最短边，不填按原图）"><n-input v-model:value="editForm.size" placeholder="如 1024" clearable /></n-form-item></n-gi>
                       <n-gi><n-form-item label="快捷分辨率"><n-select v-model:value="editForm.size" :options="editResOptions" placeholder="选择预设" clearable /></n-form-item></n-gi>
                       <n-gi><n-form-item label="宽高比（不填按原图）"><n-input v-model:value="editForm.aspect_ratio" placeholder="如 16:9 / 1:1" clearable /></n-form-item></n-gi>
@@ -368,7 +360,7 @@
                   <div class="test-actions" style="margin-top: 10px">
                     <n-button type="primary" :loading="editTesting" @click="doEditTest(true)">
                       <template #icon><Icon icon="lucide:flask-conical" /></template>
-                      Mock 编辑
+                      模拟编辑
                     </n-button>
                     <n-button :loading="editTesting" @click="doEditTest(false)">
                       <template #icon><Icon icon="lucide:sparkles" /></template>
@@ -432,7 +424,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, inject, onMounted, reactive, ref } from 'vue'
+import { computed, h, onMounted, reactive, ref } from 'vue'
 import {
   NAlert,
   NButton,
@@ -464,11 +456,9 @@ import {
 import type { MenuOption } from 'naive-ui'
 import { Icon } from '@iconify/vue'
 import { BRIDGE_UNAVAILABLE_MESSAGE, useBridge } from './composables/useBridge'
-import { themeKey } from './theme'
 
 const { apiGet, apiPost, init } = useBridge()
 const message = useMessage()
-const { isDark, toggle: toggleTheme } = inject(themeKey)!
 
 const collapsed = ref(false)
 const activeKey = ref<'providers' | 'settings' | 'tools'>('providers')
@@ -482,7 +472,7 @@ onMounted(() => {
 const menuOptions: MenuOption[] = [
   { label: '供应商设置', key: 'providers', icon: () => h(Icon, { icon: 'lucide:server' }) },
   { label: '功能设置', key: 'settings', icon: () => h(Icon, { icon: 'lucide:settings' }) },
-  { label: '工具测试', key: 'tools', icon: () => h(Icon, { icon: 'lucide:flask-conical' }) },
+  { label: '图片创作', key: 'tools', icon: () => h(Icon, { icon: 'lucide:image' }) },
 ]
 function onMenu(k: string) { activeKey.value = k as any; if (k === 'tools') refreshGenerated() }
 
@@ -759,7 +749,7 @@ function onStyleChange() {
   }, 300) as unknown as number
 }
 
-// ------- 工具测试：两工具全参数 + 本地上传 -------
+// ------- 图片创作：两工具全参数 + 本地上传 -------
 const toolTab = ref<'generate' | 'edit'>('generate')
 const genForm = reactive({
   model_id: null as string | null,
@@ -835,7 +825,7 @@ function clearMask() { maskImage.value = null }
 async function doGenTest(mock: boolean) {
   if (!genForm.prompt.trim()) { message.warning('请输入 prompt'); return }
   genTesting.value = true
-  genMsg.value = mock ? 'Mock 生成中...' : '真实生成中...'
+  genMsg.value = mock ? '模拟生成中...' : '真实生成中...'
   genPreviews.value = []
   try {
     const body: Record<string, unknown> = {
@@ -861,7 +851,7 @@ async function doGenTest(mock: boolean) {
     if (!genPreviews.value.length && data.b64) {
       genPreviews.value = [{ src: `data:${data.mime || 'image/png'};base64,${data.b64}`, markdown: '' }]
     }
-    genMsg.value = mock ? 'Mock 生成成功' : `生成成功 ${data.provider || ''} ${data.model || ''}`.trim()
+    genMsg.value = mock ? '模拟生成成功' : `生成成功 ${data.provider || ''} ${data.model || ''}`.trim()
     if (!mock) await refreshGenerated()
   } catch (err) {
     genMsg.value = `失败: ${(err as Error).message}`
@@ -872,7 +862,7 @@ async function doEditTest(mock: boolean) {
   if (!editForm.prompt.trim()) { message.warning('请输入 prompt'); return }
   if (!editImages.value.length) { message.warning('请先上传输入图片'); return }
   editTesting.value = true
-  editMsg.value = mock ? 'Mock 编辑中...' : '真实编辑中...'
+  editMsg.value = mock ? '模拟编辑中...' : '真实编辑中...'
   editPreviews.value = []
   try {
     const body: Record<string, unknown> = {
@@ -899,7 +889,7 @@ async function doEditTest(mock: boolean) {
     if (!editPreviews.value.length && data.b64) {
       editPreviews.value = [{ src: `data:${data.mime || 'image/png'};base64,${data.b64}`, markdown: '' }]
     }
-    editMsg.value = mock ? 'Mock 编辑成功' : `编辑成功 ${data.provider || ''} ${data.model || ''}`.trim()
+    editMsg.value = mock ? '模拟编辑成功' : `编辑成功 ${data.provider || ''} ${data.model || ''}`.trim()
     if (!mock) await refreshGenerated()
   } catch (err) {
     editMsg.value = `失败: ${(err as Error).message}`
@@ -964,7 +954,7 @@ onMounted(() => { void reload() })
 }
 .sider-inner {
   height: 100%;
-  background: var(--glass-thick-bg);
+  background: var(--sider-bg);
   border-right: 1px solid var(--glass-divider);
   display: flex;
   flex-direction: column;
@@ -987,33 +977,14 @@ onMounted(() => { void reload() })
   font-weight: 600;
   color: var(--text-1);
 }
-.theme-toggle {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  color: inherit;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-full);
-  background: var(--glass-regular-bg);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--glass-shadow);
-  cursor: pointer;
-  transition: transform 0.15s ease, background 0.2s ease;
-}
-.theme-toggle:hover { transform: scale(1.06); }
-.theme-toggle:active { transform: scale(0.94); }
+
 .inline-icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 2px; color: var(--text-3); }
 .sider-scroll { flex: 1; }
 .sider-footer { padding: 10px 16px; border-top: 1px solid var(--glass-divider); }
 .foot-hint { font-size: 12px; color: var(--text-3); word-break: break-all; }
 .content { flex: 1; min-width: 0; overflow: hidden; }
 .content-scroll { height: 100%; }
-.content-inner { max-width: 860px; margin: 0 auto; padding: 20px 26px; }
+.content-inner { max-width: 860px; margin: 0 auto; padding: 20px 26px 96px; }
 .bridge-alert { margin-bottom: 14px; }
 .bridge-alert-body { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .content-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
@@ -1022,7 +993,7 @@ onMounted(() => { void reload() })
 .content-sub { font-size: 12px; color: var(--text-3); margin-bottom: 14px; }
 
 .provider-card {
-  background: #fff;
+  background: var(--glass-regular-bg);
   border: 1px solid var(--glass-divider);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
   border-radius: var(--radius-md);
@@ -1042,7 +1013,7 @@ onMounted(() => { void reload() })
 .model-empty { font-size: 12px; color: var(--text-3); padding: 8px; text-align: center; border: 1px dashed var(--glass-divider); border-radius: var(--radius-xs); }
 .model-card {
   border: 1px dashed var(--glass-divider);
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--glass-regular-bg);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
   margin-bottom: 8px;
@@ -1054,7 +1025,7 @@ onMounted(() => { void reload() })
 
 .setting-card {
   margin-top: 6px;
-  --n-color: #fff;
+  --n-color: var(--glass-regular-bg);
   --n-border-color: var(--glass-divider);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
 }
@@ -1094,4 +1065,24 @@ onMounted(() => { void reload() })
 .save-fab { position: fixed; right: 26px; bottom: 26px; z-index: 100; box-shadow: var(--glass-shadow); }
 .fab-enter-active, .fab-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
 .fab-enter-from, .fab-leave-to { opacity: 0; transform: translateY(14px) scale(0.92); }
+@media (max-width: 1024px) {
+  .content-inner { padding: 18px 20px 92px; }
+}
+
+@media (max-width: 768px) {
+  .content-inner { padding: 16px 16px 88px; }
+  .content-header { align-items: flex-start; flex-wrap: wrap; }
+  .header-actions { flex-wrap: wrap; }
+}
+
+@media (max-width: 520px) {
+  .content-inner { padding: 14px 12px 84px; }
+  .content-header h2 { font-size: 16px; }
+  .header-actions { width: 100%; justify-content: flex-end; }
+  .provider-head { align-items: flex-start; flex-wrap: wrap; }
+  .provider-actions { width: 100%; justify-content: flex-end; }
+  .save-fab { right: 12px; bottom: 14px; }
+  .img-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  .test-previews { grid-template-columns: 1fr; }
+}
 </style>

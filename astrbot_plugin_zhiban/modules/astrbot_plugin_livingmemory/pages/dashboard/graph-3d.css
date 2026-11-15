@@ -45,7 +45,7 @@
   --theme-radius: 6px;
   --theme-shadow: 0 18px 48px #0005;
 }
-:root[data-graph-view="3d"] :is(#page-graph, #peek-panel, #appearance-dialog, .discard-dialog) { color-scheme: dark; }
+:root[data-graph-view="3d"] :is(#page-graph, #peek-panel, .discard-dialog) { color-scheme: dark; }
 :root[data-graph-view="3d"] #peek-panel .btn-danger { color: var(--text-inverse); }
 html[data-graph-view="3d"] .sidebar { background: #080b12; border-color: #d8bc9117; }
 html[data-graph-view="3d"] .brand-mark { background: #d8bc91; color: #15120f; }

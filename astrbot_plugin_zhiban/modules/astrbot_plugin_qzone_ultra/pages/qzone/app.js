@@ -1,5 +1,4 @@
 ﻿const bridge = window.AstrBotPluginPage;
-const BRIDGE_READY_TIMEOUT_MS = 5000;
 const BRIDGE_REQUEST_TIMEOUT_MS = 60000;
 const DETAIL_DRAWER_BREAKPOINT = 1200;
 const DETAIL_CACHE_TTL_MS = 45000;
@@ -1878,11 +1877,9 @@ async function init() {
   }
   
   try {
-    state.context = await withTimeout(
-      bridge.ready(),
-      BRIDGE_READY_TIMEOUT_MS,
-      "初始化 AstrBot WebUI 桥接超时，请刷新页面后重试。"
-    );
+    // 宿主桥接自身负责握手超时；这里不得用更短的独立超时提前放弃，
+    // 否则页面会停在静态壳且之后不会重试。
+    state.context = await bridge.ready();
     syncTheme(state.context);
   } catch (error) {
     setNotice(error.message || "桥接初始化失败", "error");

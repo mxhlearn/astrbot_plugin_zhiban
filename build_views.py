@@ -21,6 +21,10 @@ HEART_REBUILD_REASON = (
     "rebuilt from the adapted heart webui for Zhiban branding, Chinese copy, "
     "and the controlled light-green theme"
 )
+QZONE_BRIDGE_REASON = (
+    "removed the page-local 5s bridge-ready timeout so the host bridge owns "
+    "handshake timing and QQ activity can recover from slow startup"
+)
 NON_HTML_ADAPTATIONS = {
     ("heart", "assets/index-BL7DV78x.js"): {
         "source": "astrbot_plugin_angel_heart/pages/chat-config/assets/index-BL7DV78x.js",
@@ -29,6 +33,10 @@ NON_HTML_ADAPTATIONS = {
     ("heart", "assets/style-LSpSUt7F.css"): {
         "source": "astrbot_plugin_angel_heart/pages/chat-config/assets/style-LSpSUt7F.css",
         "reason": HEART_REBUILD_REASON,
+    },
+    ("qzone", "app.js"): {
+        "source": "astrbot_plugin_qzone_ultra/pages/qzone/app.js",
+        "reason": QZONE_BRIDGE_REASON,
     },
 }
 BRIDGE_ADAPTATIONS = {
@@ -56,8 +64,14 @@ def _non_html_adaptation(
     source_is_heart_build = (
         source_parts[0] == "astrbot_plugin_angel_heart"
         and source_parts[1:3] == ("pages", "chat-config")
+        and relative.parts[:1] == ("assets",)
     )
-    if not source_is_heart_build or relative.parts[:1] != ("assets",):
+    source_is_qzone_app = (
+        source_parts[0] == "astrbot_plugin_qzone_ultra"
+        and source_parts[1:3] == ("pages", "qzone")
+        and relative.as_posix() == "app.js"
+    )
+    if not (source_is_heart_build or source_is_qzone_app):
         return None
     adaptation = NON_HTML_ADAPTATIONS.get((module, relative.as_posix()))
     if adaptation is None:

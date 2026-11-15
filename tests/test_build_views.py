@@ -186,6 +186,87 @@ class BuildViewsTests(unittest.TestCase):
         self.assertIn("新建对话策略", bundled)
         self.assertNotIn("theme-toggle", bundled)
 
+    def test_shell_and_qzone_do_not_use_page_local_navigation_or_short_bridge_timeouts(self):
+        root = Path(__file__).parents[1] / "astrbot_plugin_zhiban"
+        app = (root / "views" / "知伴" / "app.js").read_text(encoding="utf-8")
+        bridge = (root / "views" / "知伴" / "module_bridge.js").read_text(encoding="utf-8")
+        qzone = (
+            root
+            / "modules"
+            / "astrbot_plugin_qzone_ultra"
+            / "pages"
+            / "qzone"
+            / "app.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("location.replace", app)
+        self.assertNotIn("navigatePage", app)
+        self.assertNotIn("BRIDGE_READY_TIMEOUT_MS", qzone)
+        self.assertIn("await bridge.ready()", qzone)
+        self.assertIn("installRuntimeErrorForwarding", bridge)
+        self.assertIn("unhandledrejection", bridge)
+        self.assertIn("benignRuntimeWarning", bridge)
+        self.assertIn("ResizeObserver loop", bridge)
+
+    def test_picture_creation_source_uses_zhiban_brand_and_host_theme(self):
+        root = Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "modules" / "astrbot_plugin_angel_brush"
+        source_root = root / "webui" / "src"
+        panel = (source_root / "BrushPanel.vue").read_text(encoding="utf-8")
+        theme = (source_root / "theme.ts").read_text(encoding="utf-8")
+        app = (source_root / "App.vue").read_text(encoding="utf-8")
+        main = (source_root / "main.ts").read_text(encoding="utf-8")
+        webui_index = (root / "webui" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('class="brand">图片创作</div>', panel)
+        self.assertIn('<title>图片创作</title>', webui_index)
+        self.assertIn('<h2>图片创作</h2>', panel)
+        self.assertIn('tab="生成图片"', panel)
+        self.assertIn('tab="编辑图片"', panel)
+        self.assertIn('生成图片 / 编辑图片', panel)
+        self.assertNotIn('工具测试', panel)
+        self.assertNotIn('angel_image_generate', panel)
+        self.assertNotIn('angel_image_edit', panel)
+        self.assertNotIn('Angel', panel)
+        self.assertNotIn('天使', panel)
+
+        self.assertIn("#2f6b4f", theme)
+        self.assertIn("#f5f8f4", theme)
+        self.assertIn("#f5f8f4", app)
+        self.assertIn("document.documentElement.dataset.zhibanModule = 'brush'", main)
+        self.assertIn("document.documentElement.dataset.theme = 'light'", main)
+        self.assertIn("app.provide(themeKey, createThemeApi())", main)
+        self.assertIn("bridge?.getContext?.()", app)
+        self.assertIn("bridge?.onContext?.(syncHostTheme)", app)
+        self.assertIn("theme.syncFromHost(context)", app)
+        self.assertIn("context?.isDark", theme)
+        self.assertNotIn('theme-toggle', panel)
+        self.assertNotIn('toggleTheme', panel)
+        self.assertNotIn('angel-brush-theme', theme)
+        self.assertNotIn('localStorage', theme)
+        self.assertNotIn('toggle:', theme)
+
+    def test_picture_creation_bundle_matches_visible_brand_and_host_theme(self):
+        root = Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "modules" / "astrbot_plugin_angel_brush"
+        build_root = root / "pages" / "brush-config"
+        built_index = (build_root / "index.html").read_text(encoding="utf-8")
+        self.assertIn("<title>图片创作</title>", built_index)
+        built_js_name = re.search(r'src="\./assets/(index-[^"]+\.js)"', built_index)
+        built_css_name = re.search(r'href="\./assets/(style-[^"]+\.css)"', built_index)
+        self.assertIsNotNone(built_js_name)
+        self.assertIsNotNone(built_css_name)
+        built_js = build_root / "assets" / built_js_name.group(1)
+        built_css = build_root / "assets" / built_css_name.group(1)
+        bundled = built_index + built_js.read_text(encoding="utf-8") + built_css.read_text(encoding="utf-8")
+
+        self.assertNotIn('工具测试', bundled)
+        self.assertNotIn('angel-brush-theme', bundled)
+        self.assertNotIn('theme-toggle', bundled)
+        self.assertIn('图片创作', bundled)
+        self.assertIn('生成图片', bundled)
+        self.assertIn('编辑图片', bundled)
+        self.assertIn('#2f6b4f', bundled)
+        self.assertIn('#f5f8f4', bundled)
+
     def test_qq_profile_source_keeps_status_signature_and_license(self):
         root = Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "modules" / "astrbot_plugin_qqprofile"
         source = (root / "main.py").read_text(encoding="utf-8")
@@ -281,7 +362,13 @@ class BuildViewsTests(unittest.TestCase):
             self.assertLessEqual(set(adapted_paths), set(manifest["generated_files"]))
             adapted_non_html = [item for item in adapted_assets if not item["path"].endswith("/index.html")]
             self.assertTrue(adapted_non_html)
-            self.assertTrue(all(item["path"].startswith("heart/") for item in adapted_non_html))
+            self.assertTrue(
+                all(item["path"].startswith(("heart/", "qzone/")) for item in adapted_non_html)
+            )
+            qzone_asset = adapted_paths.get("qzone/app.js")
+            self.assertIsNotNone(qzone_asset)
+            self.assertIn("5s bridge-ready timeout", qzone_asset["reason"])
+            self.assertEqual(len(qzone_asset["sha256"]), 64)
 
             for path, item in adapted_paths.items():
                 with self.subTest(path=path):
