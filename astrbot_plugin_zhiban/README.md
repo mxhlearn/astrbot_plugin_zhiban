@@ -13,7 +13,7 @@
   <a href="#安装与切换"><img alt="Version" src="https://img.shields.io/badge/version-0.3.2-2f6b4f?style=flat-square"></a>
   <a href="#兼容范围"><img alt="AstrBot" src="https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square"></a>
   <a href="#兼容范围"><img alt="OneBot" src="https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square"></a>
-  <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-97%20Python%20%2B%2017%20Node-2f6b4f?style=flat-square"></a>
+  <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-101%20Python%20%2B%2017%20Node-2f6b4f?style=flat-square"></a>
 </p>
 
 ---
