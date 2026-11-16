@@ -14,6 +14,7 @@ import {
   unwrapApiPayload,
   validateNumericValue,
 } from "./settings.mjs";
+import { ModulePageCache } from "./module_cache.mjs";
 
 const moduleCatalog = [
   { key: "heart", label: "聊天互动", logo: "./logos/heart.png", description: "群聊接话、唤醒与私聊上下文", group: "聊天系统", groupKey: "chat", page: "heart", plugin: "astrbot_plugin_angel_heart" },
@@ -99,6 +100,13 @@ let statusRequestInFlight = null;
 const STATUS_CACHE_KEY = "zhiban-status-cache-v1";
 const STATUS_CACHE_TTL_MS = 5000;
 const STATUS_CACHE_PREFIX = "zhiban-status:";
+const MODULE_PAGE_CACHE_TTL_MS = 30000;
+const MODULE_PAGE_CACHE_MAX_ENTRIES = 12;
+const modulePageCache = new ModulePageCache({
+  ttlMs: MODULE_PAGE_CACHE_TTL_MS,
+  maxEntries: MODULE_PAGE_CACHE_MAX_ENTRIES,
+});
+let modulePrefetchGeneration = 0;
 const ROUTE_CACHE_KEY = "zhiban-route-v1";
 const ROUTE_NAME_PREFIX = "zhiban-route:";
 const NAME_SEGMENT_SEPARATOR = "\n";
@@ -806,6 +814,7 @@ function detachModuleFrame() {
 
 function showFrameFailure(host, item, reason = "", stage = "") {
   if (!host?.isConnected) return;
+  clearModulePageCache(item.key);
   clearModuleStageTimers();
   host.classList.remove("ready", "loaded", "bridge-ready");
   host.classList.add("failed");
@@ -877,53 +886,127 @@ function navigateModuleSubpage(item, detail = {}) {
   return true;
 }
 
+function modulePageUrl(item, route) {
+  const pageUrl = new URL(`modules/${item.page}/${route.path || "index.html"}`, new URL("./", document.baseURI));
+  pageUrl.searchParams.set("embedded", "frame");
+  pageUrl.searchParams.set("zhiban_panel", "1");
+  pageUrl.searchParams.set("theme", document.documentElement.dataset.theme || "light");
+  if (route.key) pageUrl.searchParams.set("sub", route.key);
+  if (route.hash) pageUrl.searchParams.set("subhash", route.hash);
+  for (const [key, value] of Object.entries(route.query || {})) pageUrl.searchParams.set(key, value);
+  const assetToken = new URL(location.href).searchParams.get("asset_token");
+  if (assetToken) pageUrl.searchParams.set("asset_token", assetToken);
+  return pageUrl;
+}
+
+function modulePageCacheKey(item, route, pageUrl) {
+  return modulePageCache.key({
+    originPath: `${pageUrl.origin}${pageUrl.pathname}`,
+    theme: document.documentElement.dataset.theme || "light",
+    moduleKey: item.key,
+    route,
+  });
+}
+
+function readCachedModulePage(key) {
+  return modulePageCache.get(key);
+}
+
+function writeCachedModulePage(key, source, moduleKey) {
+  return modulePageCache.set(key, source, moduleKey);
+}
+
+function clearModulePageCache(moduleKey = "") {
+  modulePrefetchGeneration += 1;
+  modulePageCache.clear(moduleKey);
+}
+
+async function prefetchModulePage(item, route, generation, epoch) {
+  if (generation !== modulePrefetchGeneration || epoch !== modulePageCache.epoch) return;
+  const pageUrl = modulePageUrl(item, route);
+  const key = modulePageCacheKey(item, route, pageUrl);
+  if (readCachedModulePage(key)) return;
+  try {
+    const response = await fetch(pageUrl.href, { credentials: "same-origin", cache: "no-store" });
+    if (!response.ok) return;
+    const source = await response.text();
+    if (generation !== modulePrefetchGeneration || epoch !== modulePageCache.epoch) return;
+    writeCachedModulePage(key, source, item.key);
+  } catch { /* Prefetch is opportunistic and must never block the workbench. */ }
+}
+
+function scheduleModulePrefetch(item) {
+  if (!item?.page) return;
+  const generation = ++modulePrefetchGeneration;
+  const epoch = modulePageCache.epoch;
+  const targets = [];
+  const seen = new Set();
+  const add = (targetItem, route) => {
+    const key = `${targetItem.key}|${route.path || ""}|${route.hash || ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    targets.push({ item: targetItem, route });
+  };
+  const config = routeConfig(item.key);
+  if (config) {
+    for (const [key, route] of Object.entries(config.routes)) {
+      add(item, { key, ...route, hash: "", query: {} });
+    }
+  } else {
+    add(item, { ...normalizeSubpage(item.key, ""), hash: "", query: {} });
+  }
+  for (const other of groupModules(item.groupKey)) {
+    if (other.key === item.key || !other.page) continue;
+    add(other, { ...normalizeSubpage(other.key, ""), hash: "", query: {} });
+  }
+  setTimeout(() => {
+    if (generation !== modulePrefetchGeneration || epoch !== modulePageCache.epoch) return;
+    for (const target of targets) void prefetchModulePage(target.item, target.route, generation, epoch);
+  }, 300);
+}
+
 async function createModuleFrameElement(item, requestedRoute = null) {
   detachModuleFrame();
   const sequence = moduleFrameSequence;
   const route = routeFrameState(requestedRoute || { ...currentModuleRoute(), hash: activeSubpageHash, query: activeSubpageQuery });
+  const pageUrl = modulePageUrl(item, route);
+  const cacheKey = modulePageCacheKey(item, route, pageUrl);
+  const cachedSource = readCachedModulePage(cacheKey);
   const host = element("section", "module-frame-host");
   host.dataset.module = item.key;
   host.dataset.subpage = route.key;
-  host.dataset.stage = "fetching";
+  host.dataset.stage = cachedSource ? "bridge_wait" : "fetching";
   const loading = element("div", "module-frame-loading");
   loading.setAttribute("role", "status");
   const loadingText = element("span", "module-frame-loading-text", `正在打开${item.label}`);
   loading.append(element("span", "module-frame-spinner"), loadingText);
-  const skeleton = element("div", "module-frame-skeleton");
-  skeleton.setAttribute("aria-hidden", "true");
-  skeleton.append(
-    element("span", "module-skeleton-line wide"),
-    element("span", "module-skeleton-line medium"),
-    element("span", "module-skeleton-card"),
-    element("span", "module-skeleton-card"),
-    element("span", "module-skeleton-card"),
-  );
-  host.append(loading, skeleton);
+  // Only show the parent row on a cold fetch. Once the iframe is inserted the
+  // module's own content-level loading state is the single visible layer.
+  if (!cachedSource) host.append(loading);
   workspace.replaceChildren(host);
   refresh.disabled = true;
 
-  const controller = new AbortController();
-  activeModuleFetch = controller;
+  let controller = null;
   let fetchTimedOut = false;
-  const fetchTimer = setTimeout(() => {
-    fetchTimedOut = true;
-    controller.abort();
-  }, 12000);
+  let fetchTimer = null;
+  const fetchEpoch = modulePageCache.epoch;
   try {
-    const pageUrl = new URL(`modules/${item.page}/${route.path || "index.html"}`, new URL("./", document.baseURI));
-    pageUrl.searchParams.set("embedded", "frame");
-    pageUrl.searchParams.set("zhiban_panel", "1");
-    pageUrl.searchParams.set("theme", document.documentElement.dataset.theme || "light");
-    if (route.key) pageUrl.searchParams.set("sub", route.key);
-    if (route.hash) pageUrl.searchParams.set("subhash", route.hash);
-    for (const [key, value] of Object.entries(route.query || {})) pageUrl.searchParams.set(key, value);
-    const assetToken = new URL(location.href).searchParams.get("asset_token");
-    if (assetToken) pageUrl.searchParams.set("asset_token", assetToken);
-    const response = await fetch(pageUrl.href, { credentials: "same-origin", cache: "no-store", signal: controller.signal });
-    clearTimeout(fetchTimer);
-    if (activeModuleFetch === controller) activeModuleFetch = null;
-    if (!response.ok) throw new Error(`模块页面返回 HTTP ${response.status}`);
-    const source = await response.text();
+    let source = cachedSource;
+    if (!source) {
+      controller = new AbortController();
+      activeModuleFetch = controller;
+      fetchTimer = setTimeout(() => {
+        fetchTimedOut = true;
+        controller.abort();
+      }, 12000);
+      const response = await fetch(pageUrl.href, { credentials: "same-origin", cache: "no-store", signal: controller.signal });
+      clearTimeout(fetchTimer);
+      fetchTimer = null;
+      if (activeModuleFetch === controller) activeModuleFetch = null;
+      if (!response.ok) throw new Error(`模块页面返回 HTTP ${response.status}`);
+      source = await response.text();
+      if (fetchEpoch === modulePageCache.epoch) writeCachedModulePage(cacheKey, source, item.key);
+    }
     if (sequence !== moduleFrameSequence || !host.isConnected) return;
     host.dataset.stage = "bridge_wait";
     const frame = document.createElement("iframe");
@@ -980,6 +1063,7 @@ async function createModuleFrameElement(item, requestedRoute = null) {
       frame.dataset.appReady = "true";
       loadingText.textContent = `${item.label}界面已加载`;
       refresh.disabled = false;
+      scheduleModulePrefetch(item);
       void refreshStatus({ background: true });
     };
 
@@ -1002,9 +1086,10 @@ async function createModuleFrameElement(item, requestedRoute = null) {
 
     frame.srcdoc = rewriteModuleDocument(source, pageUrl.href, item.key, route);
     host.append(frame);
+    loading.remove();
     refresh.disabled = false;
   } catch (error) {
-    clearTimeout(fetchTimer);
+    if (fetchTimer) clearTimeout(fetchTimer);
     if (activeModuleFetch === controller) activeModuleFetch = null;
     if (error instanceof DOMException && error.name === "AbortError") {
       if (fetchTimedOut && sequence === moduleFrameSequence && host.isConnected) {
@@ -1013,6 +1098,7 @@ async function createModuleFrameElement(item, requestedRoute = null) {
       return;
     }
     if (sequence !== moduleFrameSequence || !host.isConnected) return;
+    clearModulePageCache(item.key);
     showFrameFailure(host, item, moduleErrorText(error), "页面读取");
     refresh.disabled = false;
   }
@@ -1442,6 +1528,7 @@ async function applySavedModule(item, message, stateLabel) {
   try {
     stateLabel.className = "settings-message pending";
     stateLabel.textContent = "已保存，正在应用…";
+    clearModulePageCache(item.key);
     await callSettingsApi("POST", `ui/apply/${item.key}`, {});
     pendingApply.delete(item.key);
     await refreshStatus();
@@ -2122,7 +2209,14 @@ refresh.addEventListener("click", () => {
   }
   else if (activeView === "global") void renderGlobalSettings();
   else if (activeView === "settings") void renderSettings(activeKey);
-  else void refreshStatus();
+  else {
+    const item = moduleById(activeKey);
+    clearModulePageCache(activeKey);
+    if (item.page) {
+      void createModuleFrameElement(item, { ...currentModuleRoute(), hash: activeSubpageHash, query: activeSubpageQuery });
+    }
+    void refreshStatus();
+  }
 });
 overviewTabs.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-overview-view]");
