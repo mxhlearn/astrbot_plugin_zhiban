@@ -156,6 +156,11 @@ class _UsageProviderProxy:
     def __getattr__(self, name):
         return getattr(self._provider, name)
 
+    @property
+    def __class__(self):
+        """Keep framework Provider isinstance checks transparent to accounting."""
+        return self._provider.__class__
+
     def _model(self):
         config = getattr(self._provider, "provider_config", None)
         if isinstance(config, dict):
