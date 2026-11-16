@@ -11,7 +11,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square)](https://github.com/AstrBotDevs/AstrBot)
 [![OneBot](https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square)](#兼容矩阵)
 [![Python](https://img.shields.io/badge/Python-3.12-3f7560?style=flat-square)](#本地开发)
-[![Tests](https://img.shields.io/badge/tests-106%20Python%20%2B%2023%20Node-2f6b4f?style=flat-square)](#质量与验证)
+[![Tests](https://img.shields.io/badge/tests-1688%20Python%20%2B%20126%20Node-2f6b4f?style=flat-square)](#质量与验证)
 [![License](https://img.shields.io/badge/license-mixed%20%2F%20review%20required-8c5917?style=flat-square)](astrbot_plugin_zhiban/README.md)
 
 [快速开始](#快速开始) · [功能模块](#十个运行模块) · [完整文档](astrbot_plugin_zhiban/README.md)
@@ -138,8 +138,8 @@
 
 ## 质量与验证
 
-- **Python**：106 项测试通过，另有 32 个子测试通过。
-- **Node**：23 项测试通过。
+- **Python**：1,688 项测试通过（根测试 148 + 表情模块 1,540），7 项跳过，另有 125 个子测试通过（根 32 + 表情 93）。
+- **Node**：126 项测试通过（根桥接/前端 32 + 表情前端 94）。
 - **页面**：登录态下检查五入口、浅绿首帧、模块挂载、快速切换与配置页；Linux 实际部署仍待目标环境验收。
 - **配置安全**：并发冲突、密钥脱敏、显式清除、保存/应用、无修改反馈均有回归。
 - **竞态**：快速并发跳转最终停留在最后目标，旧页面结果不覆盖新页面。
@@ -147,10 +147,9 @@
 - **切换**：20 次一级入口往返后仅保留 1 个工作台 frame，无串页。
 - **工作台**：本机登录态下七个模块完成页面读取、桥接握手与界面挂载；图片创作无供应商、QQ 动态 Cookie 失效时显示对应受限状态。
 - **构建**：资源清单、ZIP 和 SHA-256 校验流程可用；具体文件数以构建产物为准。
+- **统计口径**：知伴 Token 仅计知伴可识别的 Provider 最终响应；AstrBot 全局 Token 来自只读 `provider_stats`，包含非知伴调用，两者不混算；缺 usage 显示“未统计/暂无”，不伪报 0。
 
-本地构建产物：`dist/zhiban-0.3.4.zip`（30,937,817 字节；`dist/` 不进入 Git）。SHA-256：`fcaee15f37be3ebd9ea08913587e5957ae6cb26e5d7d068de14f3f307accdb0d`
-
-发布包 SHA-256：`fcaee15f37be3ebd9ea08913587e5957ae6cb26e5d7d068de14f3f307accdb0d`
+本地构建产物：`dist/zhiban-0.3.4.zip`（约 31 MB；`dist/` 不进入 Git）。发布包完整性以随包 `dist/manifest.json` 的逐文件大小与 SHA-256 为准；根 README 不写死会在自身进入 ZIP 后变化的归档哈希。
 
 ## AI 辅助开发
 

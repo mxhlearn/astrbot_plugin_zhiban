@@ -26,11 +26,27 @@
   const current = modules.find((item) => item.key === moduleKey);
   if (!current) return;
   const viewRoot = new URL('.', moduleScript.src);
+  const moduleRoot = new URL(`modules/${moduleKey}/`, viewRoot);
+  const initialRoute = window.__zhibanRoute && typeof window.__zhibanRoute === 'object'
+    ? window.__zhibanRoute : {};
+  const initialPath = String(initialRoute.path || 'index.html').replace(/^\/+/, '');
+  const initialBase = initialPath.includes('/') ? initialPath.slice(0, initialPath.lastIndexOf('/') + 1) : '';
   const rootElement = document.documentElement;
   const embedded = rootElement.dataset.zhibanEmbedded === 'true'
     || rootElement.dataset.zhibanHostFrame === 'true'
     || new URL(window.location.href).searchParams.get('embedded') === 'frame';
   const original = window.AstrBotPluginView || window.AstrBotPluginPage;
+
+  function routeBasePath(value) {
+    const path = String(value || '').trim().replace(/^\/+/, '');
+    if (!path || path.includes('\\') || path.split('/').some((part) => !part || part === '.' || part === '..')) return '';
+    return path.endsWith('.html') ? path.slice(0, path.lastIndexOf('/') + 1) : (path.endsWith('/') ? path : path + '/');
+  }
+
+  function modulePageRoot(route = initialRoute) {
+    const base = routeBasePath(route?.base || route?.path || initialBase || '');
+    return base ? new URL(`modules/${moduleKey}/${base}`, viewRoot) : moduleRoot;
+  }
 
   function moduleContext(context) {
     return {
@@ -40,7 +56,94 @@
       pageName: moduleKey,
       pageTitle: current.label,
       locale: context?.locale || 'zh-CN',
+      subpage: context?.subpage || initialRoute.subpage || '',
+      subpageHash: context?.subpageHash || initialRoute.hash || '',
+      query: context?.query && typeof context.query === 'object'
+        ? { ...initialRoute.query, ...context.query }
+        : { ...(initialRoute.query || {}) },
+      path: String(context?.path || initialRoute.path || ''),
     };
+  }
+
+  function resolveModuleTarget(target) {
+    const pageRoot = modulePageRoot();
+    const rawTarget = String(target || '').trim();
+    if (!rawTarget) return null;
+    // data-module-target values are module-relative; ordinary anchors are
+    // page-relative. Try both controlled bases, but always reject URLs outside
+    // this exact module root (never cross-module or sandbox escape).
+    const bases = rawTarget.startsWith('#') ? [moduleRoot] : [moduleRoot, pageRoot];
+    for (const base of bases) {
+      const candidate = rawTarget.startsWith('#') ? `${initialPath}${rawTarget}` : rawTarget;
+      let url;
+      try { url = new URL(candidate, base); } catch { continue; }
+      if (url.origin !== moduleRoot.origin || !url.pathname.startsWith(moduleRoot.pathname)) continue;
+      const path = url.pathname.slice(moduleRoot.pathname.length);
+      if (!path || path.includes('\\') || path.split('/').some((part) => !part || part === '.' || part === '..')) continue;
+      const query = {};
+      for (const [key, value] of url.searchParams) {
+        if (!['asset_token', 'embedded', 'zhiban_panel', 'theme'].includes(key)) query[key] = value;
+      }
+      return { path, hash: url.hash.replace(/^#/, ''), query };
+    }
+    return null;
+  }
+
+  function navigateModule(target) {
+    if (!embedded) return false;
+    const route = resolveModuleTarget(target);
+    if (!route) return false;
+    const token = context.appReadyToken || rootElement.dataset.appReadyToken || '';
+    if (!token) return false;
+    send('navigate', { module: moduleKey, token, ...route });
+    return true;
+  }
+
+  function routeFromLink(link) {
+    if (!link || link.target === '_blank' || link.hasAttribute('download')) return null;
+    const href = link.getAttribute('href') || '';
+    if (!href || href.startsWith('javascript:') || href.startsWith('#')) return null;
+    const route = resolveModuleTarget(href);
+    if (!route || !(route.path.endsWith('.html') || route.path.endsWith('/'))) return null;
+    return route;
+  }
+
+  function installRouteBridge() {
+    if (!embedded) return;
+    document.addEventListener('click', (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const control = event.target?.closest?.('a[data-module-target], a[data-nav-target], button[data-module-target]');
+      if (!control || control.target === '_blank' || control.hasAttribute('download')) return;
+      const target = control.dataset.moduleTarget || control.dataset.navTarget || control.getAttribute('href') || '';
+      const route = resolveModuleTarget(target);
+      if (!route || !(route.path.endsWith('.html') || route.path.endsWith('/'))) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      navigateModule(target);
+    }, true);
+    // Run in the bubble phase: page scripts get the first chance to handle a
+    // deliberate navigation, but a link can never escape the sandbox by
+    // letting the iframe perform its own top-level navigation.
+    document.addEventListener('click', (event) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = event.target?.closest?.('a[href]');
+      if (!routeFromLink(link)) return;
+      event.preventDefault();
+      navigateModule(link.getAttribute('href'));
+    });
+    const applyHash = () => {
+      const hash = moduleContext(context).subpageHash;
+      if (!hash) return;
+      const target = document.getElementById(hash) || document.querySelector(`[data-settings-tab="${CSS.escape(hash)}"]`);
+      if (target) setTimeout(() => target.scrollIntoView({ block: 'start', behavior: 'auto' }), 40);
+    };
+    window.addEventListener('hashchange', () => {
+      const hash = String(window.location.hash || '').replace(/^#/, '');
+      if (!hash || !embedded) return;
+      navigateModule(`#${hash}`);
+    });
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyHash, { once: true });
+    else applyHash();
   }
 
   const HOST_PALETTE = {
@@ -281,6 +384,16 @@
     if (!message || message.channel !== CHANNEL) return;
     if (message.kind === 'context') {
       settleReady(message.context || {});
+      return;
+    }
+    if (message.kind === 'navigation:error') {
+      if (message.module !== moduleKey) return;
+      const detail = {
+        stage: sanitizeDetail(message.stage || '导航'),
+        message: sanitizeDetail(message.message || '模块子页面无效'),
+      };
+      try { window.dispatchEvent(new CustomEvent('zhiban:navigation-error', { detail })); } catch { /* Compatibility. */ }
+      if (typeof window.MemeUI?.showPageError === 'function') window.MemeUI.showPageError(new Error(detail.message));
       return;
     }
     if (message.kind === 'response') {
@@ -715,15 +828,20 @@
     });
   }
 
-  window.ZhibanModule = {
+  const moduleApi = {
     ready: () => bridged.ready(),
     notifyReady: notifyAppReady,
     reportError: sendAppError,
+    isEmbedded: embedded,
+    navigate: navigateModule,
   };
+  Object.defineProperty(moduleApi, "route", { get: () => moduleContext(context) });
+  window.ZhibanModule = moduleApi;
 
   async function startEmbedded() {
     installEmbeddedTheme();
     installRuntimeErrorForwarding();
+    installRouteBridge();
     try {
       await bridged.ready();
     } catch (error) {

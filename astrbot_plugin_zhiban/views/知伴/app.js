@@ -34,6 +34,25 @@ const GROUPS = [
   { key: "creative", label: "表达创作", description: "表情、语音、图片与音乐" },
   { key: "social", label: "QQ 社交", description: "QQ 动态与资料管理" },
 ];
+const MODULE_SUBPAGES = {
+  meme: {
+    default: "manage",
+    routes: {
+      manage: { path: "a_manage/index.html", label: "表情管理", aliases: ["a_manage/index.html", "a_manage/"] },
+      catalog: { path: "catalog/index.html", label: "资源广场", aliases: ["catalog/index.html", "catalog/"] },
+      semantic: { path: "semantic/index.html", label: "语义化", aliases: ["semantic/index.html", "semantic/"] },
+      settings: { path: "settings/index.html", label: "设置中心", aliases: ["settings/index.html", "settings/"] },
+    },
+  },
+};
+const ROUTE_QUERY_KEYS = {
+  meme: {
+    manage: ["managed_pack_id", "review_collection"],
+    catalog: ["view"],
+    semantic: [],
+    settings: [],
+  },
+};
 let modules = moduleCatalog;
 
 const primaryNav = document.querySelector("#primaryNav");
@@ -46,6 +65,9 @@ const settingsWorkspace = document.querySelector("#settingsWorkspace");
 const refresh = document.querySelector("#refreshModule");
 const breadcrumbGroup = document.querySelector("#breadcrumbGroup");
 const breadcrumbPage = document.querySelector("#breadcrumbPage");
+const breadcrumbSubpage = document.querySelector("#breadcrumbSubpage");
+const breadcrumbSep = document.querySelector("#breadcrumbSep");
+const breadcrumbSubSep = document.querySelector("#breadcrumbSubSep");
 const overviewTabs = document.querySelector("#overviewTabs");
 const groupTabs = document.querySelector("#groupTabs");
 const configButton = document.querySelector("#headerConfigButton");
@@ -55,6 +77,12 @@ const pendingApply = new Set();
 let activeGroup = "overview";
 let activeKey = "heart";
 let activeView = "overview";
+let activeSubpage = "";
+let activeSubpageHash = "";
+let activeSubpageQuery = {};
+let usageData = null;
+let usageFetchedAt = 0;
+let usageRequestSeq = 0;
 let settingsRequest = 0;
 let statusPollTimer = null;
 let schedulerStatus = null;
@@ -71,6 +99,205 @@ let statusRequestInFlight = null;
 const STATUS_CACHE_KEY = "zhiban-status-cache-v1";
 const STATUS_CACHE_TTL_MS = 5000;
 const STATUS_CACHE_PREFIX = "zhiban-status:";
+const ROUTE_CACHE_KEY = "zhiban-route-v1";
+const ROUTE_NAME_PREFIX = "zhiban-route:";
+const NAME_SEGMENT_SEPARATOR = "\n";
+
+function readWindowNameSegment(prefix) {
+  for (const segment of String(window.name || "").split(NAME_SEGMENT_SEPARATOR)) {
+    if (segment.startsWith(prefix)) return segment.slice(prefix.length);
+  }
+  return "";
+}
+
+function writeWindowNameSegment(prefix, value) {
+  const segments = String(window.name || "")
+    .split(NAME_SEGMENT_SEPARATOR)
+    .filter((segment) => segment && !segment.startsWith(prefix));
+  if (value) segments.push(prefix + value);
+  window.name = segments.join(NAME_SEGMENT_SEPARATOR);
+}
+
+let routeSyncEnabled = false;
+let routeSyncTimer = null;
+
+function routeSnapshot() {
+  const overview = activeGroup === "overview";
+  return {
+    group: activeGroup,
+    module: overview ? "" : activeKey,
+    view: activeView,
+    sub: overview ? "" : activeSubpage,
+    subhash: overview ? "" : activeSubpageHash,
+    subq: overview ? {} : activeSubpageQuery,
+  };
+}
+
+function sanitizePersistedRoute(value) {
+  if (!value || typeof value !== "object") return null;
+  const group = String(value.group || "").trim();
+  const module = String(value.module || "").trim();
+  const view = String(value.view || "").trim();
+  if (group === "overview") {
+    return {
+      group: "overview",
+      module: "",
+      view: view === "global" ? "global" : "overview",
+      sub: "",
+      subhash: "",
+      subq: {},
+    };
+  }
+  const item = modules.find((entry) => entry.key === module);
+  if (!item) return null;
+  const route = normalizeSubpage(item.key, value.sub || "");
+  const subhash = String(value.subhash || "").replace(/^#/, "");
+  return {
+    group: item.groupKey,
+    module: item.key,
+    view: view === "settings" ? "settings" : "workbench",
+    sub: route.key,
+    subhash: /^[A-Za-z0-9_-]{1,120}$/u.test(subhash) ? subhash : "",
+    subq: sanitizeRouteQuery(item.key, route.key, value.subq),
+  };
+}
+
+function persistRouteState() {
+  const state = routeSnapshot();
+  const raw = JSON.stringify(state);
+  try { sessionStorage.setItem(ROUTE_CACHE_KEY, raw); } catch { /* opaque sandbox origin */ }
+  writeWindowNameSegment(ROUTE_NAME_PREFIX, raw);
+  if (routeSyncEnabled) {
+    clearTimeout(routeSyncTimer);
+    routeSyncTimer = setTimeout(() => {
+      routeSyncTimer = null;
+      void syncRouteState();
+    }, 240);
+  }
+}
+
+async function syncRouteState() {
+  try {
+    await withRequestTimeout(
+      callSettingsApi("POST", "ui/route", routeSnapshot()),
+      1800,
+      "路由保存超时",
+    );
+  } catch { /* A failed route save must not block navigation. */ }
+}
+
+function readLocalRouteState() {
+  try {
+    const raw = sessionStorage.getItem(ROUTE_CACHE_KEY) || readWindowNameSegment(ROUTE_NAME_PREFIX);
+    return sanitizePersistedRoute(JSON.parse(raw || "null"));
+  } catch { return null; }
+}
+
+async function readServerRouteState() {
+  try {
+    const value = await withRequestTimeout(
+      callSettingsApi("GET", "ui/route"),
+      1600,
+      "路由读取超时",
+    );
+    return sanitizePersistedRoute(value);
+  } catch { return null; }
+}
+
+function routeConfig(moduleKey) {
+  return MODULE_SUBPAGES[moduleKey] || null;
+}
+
+function normalizeSubpage(moduleKey, value) {
+  const config = routeConfig(moduleKey);
+  if (!config) return { key: "", path: "index.html", label: "", hash: "", query: {} };
+  const raw = String(value || "").trim().replace(/^#/, "");
+  if (!raw) {
+    const key = config.default;
+    const route = config.routes[key];
+    return { key, ...route, hash: "", query: {} };
+  }
+  const [pathPart, hashPart = ""] = raw.split("#", 2);
+  const cleanPath = pathPart.replace(/^\/+/, "").replace(/^\.\//, "");
+  for (const [key, route] of Object.entries(config.routes)) {
+    if (key === cleanPath || route.aliases.includes(cleanPath)) {
+      return { key, ...route, hash: hashPart, query: {} };
+    }
+  }
+  const fallback = config.routes[config.default];
+  return { key: config.default, ...fallback, hash: "", query: {} };
+}
+
+function sanitizeRouteQuery(moduleKey, subpageKey, input) {
+  const allowed = new Set((ROUTE_QUERY_KEYS[moduleKey] || {})[subpageKey] || []);
+  const result = {};
+  if (!input || typeof input !== "object") return result;
+  for (const [key, value] of Object.entries(input)) {
+    if (!allowed.has(key)) continue;
+    const text = String(value ?? "");
+    if (text.length > 240 || /[\r\n\0]/u.test(text)) continue;
+    result[key] = text;
+  }
+  return result;
+}
+
+function currentModuleRoute() {
+  return normalizeSubpage(activeKey, activeSubpage || "");
+}
+
+function setRouteState(subpage = "", hash = "", query = {}) {
+  const route = normalizeSubpage(activeKey, subpage);
+  activeSubpage = route.key;
+  activeSubpageHash = String(hash || route.hash || "").replace(/^#/, "");
+  activeSubpageQuery = sanitizeRouteQuery(activeKey, route.key, query || route.query || {});
+  return { ...route, hash: activeSubpageHash, query: activeSubpageQuery };
+}
+
+function syncRouteUrl(url = new URL(window.location.href)) {
+  persistRouteState();
+  if (activeGroup === "overview") {
+    url.searchParams.delete("sub");
+    url.searchParams.delete("subhash");
+    url.searchParams.delete("subq");
+    return url;
+  }
+  if (activeSubpage && MODULE_SUBPAGES[activeKey]) {
+    url.searchParams.set("sub", activeSubpage);
+    if (activeSubpageHash) url.searchParams.set("subhash", activeSubpageHash);
+    else url.searchParams.delete("subhash");
+    if (Object.keys(activeSubpageQuery).length) url.searchParams.set("subq", JSON.stringify(activeSubpageQuery));
+    else url.searchParams.delete("subq");
+  } else {
+    url.searchParams.delete("sub");
+    url.searchParams.delete("subhash");
+    url.searchParams.delete("subq");
+  }
+  return url;
+}
+
+function breadcrumbItems(group, item, includeSubpage = true) {
+  const items = [group.label];
+  // A module named like its group (for example 表达创作 -> 表情互动)
+  // must still show a distinct second crumb instead of repeating the group.
+  if (item && item.label) items.push(item.label);
+  if (includeSubpage) {
+    const route = currentModuleRoute();
+    const config = routeConfig(item?.key || activeKey);
+    if (route.key && route.label && route.key !== config?.default) items.push(route.label);
+  }
+  return items;
+}
+
+function renderBreadcrumb(group, item, includeSubpage = true) {
+  const items = breadcrumbItems(group, item, includeSubpage);
+  breadcrumbGroup.textContent = items[0] || "";
+  breadcrumbPage.textContent = items[1] || "";
+  breadcrumbSubpage.textContent = items[2] || "";
+  breadcrumbSep.hidden = !items[1];
+  breadcrumbPage.hidden = !items[1];
+  breadcrumbSubSep.hidden = !items[2];
+  breadcrumbSubpage.hidden = !items[2];
+}
 
 function nextSettingsControlId() {
   settingsControlSequence += 1;
@@ -91,7 +318,7 @@ window.AstrBotPluginView?.onContext?.(syncTheme);
 function readStatusCache() {
   let raw = null;
   try { raw = sessionStorage.getItem(STATUS_CACHE_KEY); } catch { /* opaque sandbox origin */ }
-  if (!raw && window.name.startsWith(STATUS_CACHE_PREFIX)) raw = window.name.slice(STATUS_CACHE_PREFIX.length);
+  if (!raw) raw = readWindowNameSegment(STATUS_CACHE_PREFIX);
   try {
     const cached = JSON.parse(raw || "null");
     if (!cached || Date.now() - Number(cached.savedAt || 0) > STATUS_CACHE_TTL_MS) return null;
@@ -109,7 +336,7 @@ function writeStatusCache(data) {
   };
   const raw = JSON.stringify(snapshot);
   try { sessionStorage.setItem(STATUS_CACHE_KEY, raw); } catch { /* opaque sandbox origin */ }
-  window.name = STATUS_CACHE_PREFIX + raw;
+  writeWindowNameSegment(STATUS_CACHE_PREFIX, raw);
 }
 
 function runViewUpdate(update) {
@@ -329,23 +556,166 @@ function attentionItems() {
   return items;
 }
 
+function formatNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return new Intl.NumberFormat("zh-CN").format(Math.max(0, Math.round(number)));
+}
+
+function formatCompactNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  if (Math.abs(number) < 100000) return formatNumber(number);
+  try {
+    return new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(number);
+  } catch {
+    return formatNumber(number);
+  }
+}
+
+function usagePeriod(period) {
+  return usageData?.zhiban?.[period] && typeof usageData.zhiban[period] === "object"
+    ? usageData.zhiban[period]
+    : null;
+}
+
+function usageValue(period, key) {
+  const data = usagePeriod(period);
+  if (!data) return undefined;
+  return data[key];
+}
+
+function usageDisplay(period, key = "tokens") {
+  if (usageData?.error) return "不可用";
+  const data = usagePeriod(period);
+  const value = usageValue(period, key);
+  if (!data) return usageData?.error ? "不可用" : "读取中…";
+  if (key === "tokens" && data.usage_requests === 0) {
+    return data.requests > 0 ? "未统计" : "暂无";
+  }
+  if (value === undefined || value === null) return "未统计";
+  return formatNumber(value);
+}
+
+function usageNote(period) {
+  const data = usagePeriod(period);
+  if (!data) return usageData?.error ? "统计接口暂不可用" : "正在读取真实用量";
+  if (!data.requests) return "尚无已识别调用";
+  if (data.input_other === null || data.input_other === undefined) {
+    return `${formatNumber(data.requests || 0)} 次请求 · 供应商未返回 usage`;
+  }
+  const input = Number(data.input_other || 0) + Number(data.input_cached || 0);
+  const missing = Number(data.missing_usage || 0);
+  return `输入 ${formatCompactNumber(input)} · 输出 ${formatCompactNumber(data.output || 0)}${missing ? ` · ${missing} 次无 usage` : ""}`;
+}
+
+function applyUsageUI() {
+  const summary = document.querySelector("#companionSummary");
+  const days = usageData?.days;
+  const startedDay = usageData?.started_day || "";
+  if (summary) {
+    summary.textContent = usageData?.error
+      ? "陪伴统计暂不可用"
+      : Number.isFinite(Number(days)) && days > 0
+        ? `已陪伴 ${formatNumber(days)} 天${startedDay ? ` · 自 ${startedDay} 起` : ""}`
+        : "陪伴统计正在读取…";
+  }
+  const daysValue = document.querySelector("[data-usage-days]");
+  if (daysValue) daysValue.textContent = Number.isFinite(Number(days)) ? formatNumber(days) : "—";
+  const daysNote = document.querySelector("[data-usage-days-note]");
+  if (daysNote) daysNote.textContent = startedDay ? `首次启用 · ${startedDay}` : "首次启用后持久记录";
+  const todayValue = document.querySelector("[data-usage-today]");
+  if (todayValue) todayValue.textContent = usageDisplay("today");
+  const todayNote = document.querySelector("[data-usage-today-note]");
+  if (todayNote) todayNote.textContent = usageNote("today");
+  const allValue = document.querySelector("[data-usage-all]");
+  if (allValue) allValue.textContent = usageDisplay("all");
+  const allNote = document.querySelector("[data-usage-all-note]");
+  if (allNote) allNote.textContent = usageNote("all");
+  const successValue = document.querySelector("[data-usage-success]");
+  if (successValue) {
+    const today = usagePeriod("today");
+    successValue.textContent = today && Number.isFinite(Number(today.successful_responses))
+      ? formatNumber(today.successful_responses)
+      : "未统计";
+  }
+  const successNote = document.querySelector("[data-usage-success-note]");
+  if (successNote) {
+    const today = usagePeriod("today");
+    successNote.textContent = today
+      ? `请求 ${formatNumber(today.requests || 0)} · 失败/未完成 ${formatNumber(today.failed_responses || 0)}`
+      : "正在读取真实响应";
+  }
+  const scope = document.querySelector("[data-usage-scope]");
+  if (scope) {
+    const global = usageData?.astrbot_global;
+    if (global?.available) {
+      const globalToday = global.today || {};
+      const globalTokens = Number(globalToday.tokens);
+      const tokenText = Number.isFinite(globalTokens) && globalToday.requests > 0
+        ? `${formatCompactNumber(globalTokens)} Token`
+        : globalToday.requests > 0 ? "Token 未统计" : "暂无统计";
+      scope.textContent = `AstrBot 全局今日 ${tokenText} · ${formatNumber(globalToday.requests || 0)} 次请求（含非知伴）`;
+    } else {
+      scope.textContent = "AstrBot 全局用量不可用；不把全局数据混入知伴调用。";
+    }
+  }
+}
+
+async function loadUsageSummary(force = false) {
+  if (!force && usageData && Date.now() - usageFetchedAt < 15000) return usageData;
+  const requestId = ++usageRequestSeq;
+  try {
+    const data = await callSettingsApi("GET", "ui/usage");
+    if (requestId !== usageRequestSeq) return usageData;
+    usageData = data && typeof data === "object" ? data : { error: true };
+    usageFetchedAt = Date.now();
+  } catch {
+    if (requestId !== usageRequestSeq) return usageData;
+    usageData = { error: true };
+    usageFetchedAt = Date.now();
+  }
+  applyUsageUI();
+  return usageData;
+}
+
 function renderGlobalOverview() {
   const root = element("div", "overview-page");
   const statesLoaded = moduleStates.size > 0;
   const running = [...moduleStates.values()].filter((state) => state.running).length;
   const ready = [...moduleStates.values()].filter((state) => readinessOf(state).state === "ready").length;
   const attention = attentionItems().length;
-  const stats = element("section", "stats-grid");
-  for (const [label, value, note] of [
-    ["已启用模块", statesLoaded ? `${[...moduleStates.values()].filter((state) => state.enabled).length} / ${modules.length}` : "未获取", "配置状态"],
-    ["正在运行", statesLoaded ? String(running) : "未获取", "生命周期状态"],
-    ["业务就绪", statesLoaded ? String(ready) : "未检测", "完成启动检查"],
-    ["需要关注", statesLoaded ? String(attention) : "未检测", "待办与连接问题"],
+
+  const companion = element("p", "companion-summary");
+  companion.id = "companionSummary";
+  companion.textContent = "陪伴统计正在读取…";
+
+  const metrics = element("section", "overview-metrics");
+  for (const [label, id, noteId, note] of [
+    ["陪伴天数", "usage-days", "usage-days-note", "首次启用后持久记录"],
+    ["今日 Token", "usage-today", "usage-today-note", "知伴可识别模块调用"],
+    ["累计 Token", "usage-all", "usage-all-note", "自首次启用统计起"],
+    ["今日成功回复", "usage-success", "usage-success-note", "按已确认完成的模型响应"],
   ]) {
-    const card = element("article", "stat-card");
-    card.append(element("span", "muted", label), element("strong", "", value), element("small", "", note));
-    stats.append(card);
+    const card = element("article", "metric-card");
+    const value = element("strong", "", "—");
+    value.dataset[id === "usage-days" ? "usageDays" : id === "usage-today" ? "usageToday" : id === "usage-all" ? "usageAll" : "usageSuccess"] = "1";
+    const help = element("small", "", note);
+    help.dataset[noteId === "usage-days-note" ? "usageDaysNote" : noteId === "usage-today-note" ? "usageTodayNote" : noteId === "usage-all-note" ? "usageAllNote" : "usageSuccessNote"] = "1";
+    card.append(element("span", "muted", label), value, help);
+    metrics.append(card);
   }
+
+  const health = element("section", "health-strip");
+  health.append(
+    element("span", "health-item", statesLoaded ? `启用 ${[...moduleStates.values()].filter((state) => state.enabled).length} / ${modules.length}` : "启用未获取"),
+    element("span", "health-item", statesLoaded ? `运行 ${running}` : "运行未获取"),
+    element("span", "health-item", statesLoaded ? `业务就绪 ${ready}` : "业务未检测"),
+    element("span", `health-item ${attention ? "attention" : ""}`, statesLoaded ? `需要关注 ${attention}` : "关注未检测"),
+  );
+  const scope = element("p", "usage-scope-line");
+  scope.dataset.usageScope = "1";
+  scope.textContent = "正在读取 AstrBot 全局用量…";
 
   const columns = element("div", "overview-columns");
   const todo = element("section", "panel");
@@ -354,8 +724,7 @@ function renderGlobalOverview() {
   todo.append(todoHead);
   const issues = attentionItems();
   if (!issues.length) {
-    const empty = element("p", "empty-copy", statesLoaded ? "当前没有检测到待处理事项。" : "状态尚未读取，暂不显示待办结论。");
-    todo.append(empty);
+    todo.append(element("p", "empty-copy", statesLoaded ? "当前没有检测到待处理事项。" : "状态尚未读取，暂不显示待办结论。"));
   } else {
     for (const issue of issues.slice(0, 5)) {
       const row = element("div", "list-row");
@@ -408,8 +777,10 @@ function renderGlobalOverview() {
     row.append(identity, renderStatusTriplet(state, true), open);
     modulePanel.append(row);
   }
-  root.append(stats, columns, modulePanel);
+  root.append(companion, metrics, health, scope, columns, modulePanel);
   workspace.replaceChildren(root);
+  applyUsageUI();
+  void loadUsageSummary();
   refresh.disabled = false;
 }
 
@@ -450,7 +821,7 @@ function showFrameFailure(host, item, reason = "", stage = "") {
   const actions = element("div", "action-row");
   const retry = element("button", "button primary", "重新加载");
   retry.type = "button";
-  retry.addEventListener("click", () => { void createModuleFrameElement(item); });
+  retry.addEventListener("click", () => { void createModuleFrameElement(item, { ...currentModuleRoute(), hash: activeSubpageHash, query: activeSubpageQuery }); });
   const config = element("button", "button", "打开配置");
   config.type = "button";
   config.addEventListener("click", () => setView("settings"));
@@ -467,11 +838,52 @@ function moduleErrorText(error) {
   return error instanceof Error ? error.message : "模块页面读取失败。";
 }
 
-async function createModuleFrameElement(item) {
+function routeFrameState(route) {
+  return {
+    key: route?.key || "",
+    path: route?.path || "index.html",
+    label: route?.label || "",
+    hash: String(route?.hash || "").replace(/^#/, ""),
+    query: route?.query && typeof route.query === "object" ? { ...route.query } : {},
+  };
+}
+
+function sameRoute(a, b) {
+  return Boolean(a && b && a.key === b.key && a.hash === b.hash && JSON.stringify(a.query || {}) === JSON.stringify(b.query || {}));
+}
+
+function navigateModuleSubpage(item, detail = {}) {
+  if (!item || item.key !== activeKey || activeView !== "workbench") return false;
+  const route = normalizeSubpage(item.key, detail.path || detail.subpage || "");
+  if (!route.key) return false;
+  const nextHash = String(detail.hash || "").replace(/^#/, "");
+  const nextQuery = sanitizeRouteQuery(item.key, route.key, detail.query || {});
+  activeSubpage = route.key;
+  activeSubpageHash = nextHash;
+  activeSubpageQuery = nextQuery;
+  const url = syncRouteUrl(new URL(window.location.href));
+  url.searchParams.set("group", activeGroup);
+  url.searchParams.set("module", activeKey);
+  url.searchParams.set("view", activeView);
+  history.replaceState(null, "", url);
+  applyHeader();
+  const frame = activeModuleFrame;
+  if (frame?.dataset.subpage !== route.path) {
+    void createModuleFrameElement(item, { ...route, hash: nextHash, query: nextQuery });
+  } else {
+    frame.dataset.subpageHash = nextHash;
+    frame.dataset.appReady = "true";
+  }
+  return true;
+}
+
+async function createModuleFrameElement(item, requestedRoute = null) {
   detachModuleFrame();
   const sequence = moduleFrameSequence;
+  const route = routeFrameState(requestedRoute || { ...currentModuleRoute(), hash: activeSubpageHash, query: activeSubpageQuery });
   const host = element("section", "module-frame-host");
   host.dataset.module = item.key;
+  host.dataset.subpage = route.key;
   host.dataset.stage = "fetching";
   const loading = element("div", "module-frame-loading");
   loading.setAttribute("role", "status");
@@ -498,10 +910,13 @@ async function createModuleFrameElement(item) {
     controller.abort();
   }, 12000);
   try {
-    const pageUrl = new URL(`modules/${item.page}/index.html`, new URL("./", document.baseURI));
+    const pageUrl = new URL(`modules/${item.page}/${route.path || "index.html"}`, new URL("./", document.baseURI));
     pageUrl.searchParams.set("embedded", "frame");
     pageUrl.searchParams.set("zhiban_panel", "1");
     pageUrl.searchParams.set("theme", document.documentElement.dataset.theme || "light");
+    if (route.key) pageUrl.searchParams.set("sub", route.key);
+    if (route.hash) pageUrl.searchParams.set("subhash", route.hash);
+    for (const [key, value] of Object.entries(route.query || {})) pageUrl.searchParams.set(key, value);
     const assetToken = new URL(location.href).searchParams.get("asset_token");
     if (assetToken) pageUrl.searchParams.set("asset_token", assetToken);
     const response = await fetch(pageUrl.href, { credentials: "same-origin", cache: "no-store", signal: controller.signal });
@@ -518,8 +933,27 @@ async function createModuleFrameElement(item) {
     frame.referrerPolicy = "same-origin";
     frame.setAttribute("sandbox", "allow-scripts allow-forms allow-downloads");
     frame.dataset.module = item.key;
+    frame.dataset.subpage = route.path;
+    frame.dataset.subpageHash = route.hash;
     activeModuleFrame = frame;
-    activeModuleFrameDetach = window.ZhibanBridge?.attachFrame(frame, item.key, item.label) || null;
+    activeModuleFrameDetach = window.ZhibanBridge?.attachFrame(frame, item.key, item.label, {
+      subpage: route.key,
+      path: route.path,
+      subpageHash: route.hash,
+      query: route.query,
+    }) || null;
+    frame.addEventListener("zhiban:navigate", (event) => {
+      if (sequence !== moduleFrameSequence || activeModuleFrame !== frame) return;
+      const detail = event.detail || {};
+      const route = normalizeSubpage(item.key, detail.path || detail.subpage || "");
+      if (!route.key) {
+        event.preventDefault();
+        return;
+      }
+      const accepted = navigateModuleSubpage(item, { ...detail, path: route.path });
+      event.preventDefault();
+      detail.accepted = accepted;
+    });
 
     const markBridgeReady = () => {
       if (sequence !== moduleFrameSequence || activeModuleFrame !== frame) return;
@@ -544,7 +978,7 @@ async function createModuleFrameElement(item) {
       host.dataset.stage = "ready";
       host.querySelector(".module-frame-failure")?.remove();
       frame.dataset.appReady = "true";
-      loadingText.textContent = `${item.label}已就绪`;
+      loadingText.textContent = `${item.label}界面已加载`;
       refresh.disabled = false;
       void refreshStatus({ background: true });
     };
@@ -566,7 +1000,7 @@ async function createModuleFrameElement(item) {
       showFrameFailure(host, item, "模块页面已读取，但桥接未连接。可以重试，或打开配置检查状态。", "桥接握手");
     }, 10000);
 
-    frame.srcdoc = rewriteModuleDocument(source, pageUrl.href, item.key);
+    frame.srcdoc = rewriteModuleDocument(source, pageUrl.href, item.key, route);
     host.append(frame);
     refresh.disabled = false;
   } catch (error) {
@@ -584,16 +1018,23 @@ async function createModuleFrameElement(item) {
   }
 }
 
-function rewriteModuleDocument(source, documentUrl, moduleKey) {
+function rewriteModuleDocument(source, documentUrl, moduleKey, route = {}) {
   const declaredBase = source.match(/<base\b[^>]*\bhref=["']([^"']+)["']/i)?.[1];
   const moduleBase = new URL(declaredBase || "./", documentUrl);
   const bridgeSrc = new URL("./module_bridge.js", document.baseURI).href;
+  const routeState = {
+    subpage: route.key || "",
+    path: route.path || "index.html",
+    hash: route.hash || "",
+    query: route.query || {},
+  };
+  const routeScript = `<script id="zhiban-route">window.__zhibanRoute=${JSON.stringify(routeState)};document.documentElement.dataset.zhibanSubpage=${JSON.stringify(routeState.subpage)};document.documentElement.dataset.zhibanSubpageHash=${JSON.stringify(routeState.hash)};</script>`;
   const panelBootstrap = '<script id="zhiban-panel-bootstrap">document.documentElement.dataset.zhibanEmbedded="true";document.documentElement.dataset.zhibanHostFrame="true";(function(){var NativeURL=window.URL;if(!NativeURL||window.__zhibanUrlPatched)return;window.__zhibanUrlPatched=true;window.URL=new Proxy(NativeURL,{construct:function(target,args){if(args.length>1&&typeof args[1]==="string"&&/^about:/i.test(args[1]))args[1]=document.baseURI;return Reflect.construct(target,args);}});var nativeReplace=history.replaceState.bind(history);history.replaceState=function(state,title,url){try{if(typeof url==="string"&&/^about:/i.test(url))url=new NativeURL(url.replace(/^about:srcdoc/,""),document.baseURI).href;return nativeReplace(state,title,url);}catch(error){return nativeReplace(state,title);}};})();</script>';
   return source
     .replace(/<base\b[^>]*>/gi, "")
-    .replace(/<script\b[^>]*\bid=["']zhiban-(?:page-theme-bootstrap|shell-bootstrap|embed-bootstrap|panel-bootstrap|module-adapter)["'][^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<script\b[^>]*\bid=["']zhiban-(?:page-theme-bootstrap|shell-bootstrap|embed-bootstrap|panel-bootstrap|route|module-adapter)["'][^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<script\b[^>]*\bsrc=["'][^"']*\/api\/plugin\/page\/bridge-sdk\.js[^"']*["'][^>]*>\s*<\/script>/gi, "")
-    .replace(/<head\b[^>]*>/i, (head) => `${head}<base href="${moduleBase.href}">${panelBootstrap}<script id="zhiban-module-adapter" src="${bridgeSrc}" data-module-key="${moduleKey}"></script>`);
+    .replace(/<head\b[^>]*>/i, (head) => `${head}<base href="${moduleBase.href}">${routeScript}${panelBootstrap}<script id="zhiban-module-adapter" src="${bridgeSrc}" data-module-key="${moduleKey}"></script>`);
 }
 
 function renderProcessModule(item, state) {
@@ -617,21 +1058,33 @@ function renderProcessModule(item, state) {
 }
 
 function currentFrameMatches(item) {
+  const route = currentModuleRoute();
   return Boolean(
     activeModuleFrame
     && activeModuleFrame.dataset.module === item.key
+    && activeModuleFrame.dataset.subpage === route.path
     && activeModuleFrame.isConnected
     && workspace.firstElementChild?.classList.contains("module-frame-host")
   );
 }
 
+function workbenchPageReachable(state) {
+  return !state
+    || ["starting", "running"].includes(state.state)
+    || String(state.error || "").startsWith("LivingMemoryInitializationFailed");
+}
+
+function workbenchShouldMountFrame(item, state) {
+  return Boolean(item?.page) && workbenchPageReachable(state);
+}
+
 function renderWorkbench(item = moduleById(activeKey)) {
   const state = moduleStates.get(item.key);
-  if (item.page && (!state || state.state === "running")) {
+  if (workbenchShouldMountFrame(item, state)) {
     settingsWorkspace.hidden = true;
     settingsWorkspace.replaceChildren();
     workspace.hidden = false;
-    if (!currentFrameMatches(item)) void createModuleFrameElement(item);
+    if (!currentFrameMatches(item)) void createModuleFrameElement(item, { ...currentModuleRoute(), hash: activeSubpageHash, query: activeSubpageQuery });
     return;
   }
   detachModuleFrame();
@@ -1393,7 +1846,6 @@ async function renderSettings(key, message = "") {
 
 function applyHeader() {
   const group = GROUPS.find((item) => item.key === activeGroup) || GROUPS[0];
-  breadcrumbGroup.textContent = group.label;
   const item = moduleById(activeKey);
   const state = moduleStates.get(item.key);
   overviewTabs.hidden = activeGroup !== "overview";
@@ -1402,7 +1854,12 @@ function applyHeader() {
   }
   groupTabs.hidden = activeGroup === "overview" || groupModules().length <= 1;
   if (activeGroup === "overview") {
+    renderBreadcrumb(group, null, false);
     breadcrumbPage.textContent = activeView === "global" ? "全局设置" : "运行总览";
+    breadcrumbPage.hidden = false;
+    breadcrumbSep.hidden = false;
+    breadcrumbSubpage.hidden = true;
+    breadcrumbSubSep.hidden = true;
     title.textContent = activeView === "global" ? "全局设置" : "今天的知伴";
     description.textContent = activeView === "global" ? "跨模块调度、资源上限与模块启停。" : "运行状态、待办与常用功能集中在这里。";
     const attention = attentionItems().length;
@@ -1412,10 +1869,21 @@ function applyHeader() {
     backButton.hidden = true;
     return;
   }
-  breadcrumbPage.textContent = activeView === "settings" ? `${item.label}配置` : group.label;
+  if (activeView === "settings") {
+    const route = currentModuleRoute();
+    renderBreadcrumb(group, item.label === group.label ? null : item, false);
+    breadcrumbSubpage.textContent = route.key ? `${route.label}配置` : "配置";
+    breadcrumbSubpage.hidden = false;
+    breadcrumbSubSep.hidden = false;
+  } else {
+    renderBreadcrumb(group, item, true);
+  }
   title.textContent = activeView === "settings" ? item.label : group.label;
-  description.textContent = activeView === "settings" ? item.description : group.description;
   const readiness = readinessOf(state);
+  const baseDescription = activeView === "settings" ? item.description : group.description;
+  description.textContent = ["not_ready", "failed"].includes(readiness.state) && readiness.detail
+    ? `${baseDescription} · ${readiness.detail}`
+    : baseDescription;
   status.textContent = `${statusLabel(state?.state)} · ${readinessLabel(readiness)}`;
   status.className = `status ${state?.state === "running" ? "running" : state?.state || readiness.state || ""}`;
   configButton.hidden = false;
@@ -1433,7 +1901,13 @@ function setOverviewView(view) {
   runViewUpdate(() => {
     activeGroup = "overview";
     activeView = nextView;
-    history.replaceState(null, "", `?group=overview&view=${activeView}`);
+    activeSubpage = "";
+    activeSubpageHash = "";
+    activeSubpageQuery = {};
+    const nextUrl = syncRouteUrl(new URL(window.location.href));
+    nextUrl.searchParams.set("group", "overview");
+    nextUrl.searchParams.set("view", activeView);
+    history.replaceState(null, "", nextUrl);
     renderNavigation();
     applyHeader();
     renderActiveView();
@@ -1450,8 +1924,9 @@ function openGroup(groupKey, key = "", view = "workbench") {
   const entries = groupModules(groupKey);
   activeKey = entries.some((item) => item.key === key) ? key : entries[0]?.key || "heart";
   activeView = view === "settings" ? "settings" : "workbench";
+  setRouteState("", "", {});
   document.documentElement.dataset.module = activeKey;
-  const url = new URL(window.location.href);
+  const url = syncRouteUrl(new URL(window.location.href));
   url.searchParams.set("group", activeGroup);
   url.searchParams.set("module", activeKey);
   url.searchParams.set("view", activeView);
@@ -1480,9 +1955,10 @@ function selectModule(key, updateUrl = true) {
   activeKey = item.key;
   activeGroup = item.groupKey;
   activeView = "workbench";
+  setRouteState("", "", {});
   document.documentElement.dataset.module = item.key;
   if (updateUrl) {
-    const url = new URL(window.location.href);
+    const url = syncRouteUrl(new URL(window.location.href));
     url.searchParams.set("group", activeGroup);
     url.searchParams.set("module", activeKey);
     url.searchParams.set("view", activeView);
@@ -1513,7 +1989,7 @@ function setView(view) {
   }
   if (activeGroup === "overview") activeGroup = moduleById(activeKey).groupKey;
   activeView = view === "settings" ? "settings" : "workbench";
-  const url = new URL(window.location.href);
+  const url = syncRouteUrl(new URL(window.location.href));
   url.searchParams.set("group", activeGroup);
   url.searchParams.set("module", activeKey);
   url.searchParams.set("view", activeView);
@@ -1599,7 +2075,7 @@ async function refreshStatus({ background = false } = {}) {
       applyHeader();
       const activeItem = moduleById(activeKey);
       const currentState = moduleStates.get(activeItem.key);
-      const shouldFrame = activeItem.page && (!currentState || currentState.state === "running");
+      const shouldFrame = workbenchShouldMountFrame(activeItem, currentState);
       if (activeView === "overview" && (!background || changedKeys.size)) {
         renderGlobalOverview();
       } else if (activeView === "workbench" && changedKeys.has(activeItem.key)) {
@@ -1640,7 +2116,10 @@ function updateSchedulerSummary(root = settingsWorkspace) {
 }
 
 refresh.addEventListener("click", () => {
-  if (activeView === "overview") void refreshStatus();
+  if (activeView === "overview") {
+    void loadUsageSummary(true);
+    void refreshStatus();
+  }
   else if (activeView === "global") void renderGlobalSettings();
   else if (activeView === "settings") void renderSettings(activeKey);
   else void refreshStatus();
@@ -1662,27 +2141,58 @@ window.addEventListener("pagehide", () => {
   detachModuleFrame();
 });
 
-const initialParams = new URLSearchParams(location.search);
-const requestedGroup = initialParams.get("group");
-const requestedModule = initialParams.get("module") || location.hash.slice(1);
-const requestedView = initialParams.get("view");
-if (requestedGroup === "overview") {
-  activeGroup = "overview";
-  activeView = requestedView === "global" ? "global" : "overview";
-} else {
-  const initialItem = moduleById(requestedModule || "memory");
-  activeKey = initialItem.key;
-  activeGroup = GROUPS.some((group) => group.key === requestedGroup) ? requestedGroup : initialItem.groupKey;
-  activeView = requestedView === "settings" ? "settings" : "workbench";
+async function bootstrap() {
+  const initialParams = new URLSearchParams(location.search);
+  const requestedGroup = initialParams.get("group");
+  const requestedModule = initialParams.get("module") || location.hash.slice(1);
+  const requestedView = initialParams.get("view");
+  const hasExplicitRoute = Boolean(requestedGroup || requestedModule || requestedView);
+  const persistedRoute = hasExplicitRoute
+    ? null
+    : (await readServerRouteState()) || readLocalRouteState();
+  const initialGroup = requestedGroup || persistedRoute?.group || "";
+  const initialModule = requestedModule || persistedRoute?.module || "memory";
+  const initialView = requestedView || persistedRoute?.view || "";
+  if (initialGroup === "overview") {
+    activeGroup = "overview";
+    activeView = initialView === "global" ? "global" : "overview";
+    activeSubpage = "";
+    activeSubpageHash = "";
+    activeSubpageQuery = {};
+  } else {
+    const initialItem = modules.find((item) => item.key === initialModule)
+      || modules.find((item) => item.key === "memory")
+      || modules[0];
+    activeKey = initialItem.key;
+    activeGroup = GROUPS.some((group) => group.key === initialGroup) ? initialGroup : initialItem.groupKey;
+    activeView = initialView === "settings" ? "settings" : "workbench";
+    let initialQuery = {};
+    const persistedQuery = persistedRoute?.subq;
+    try {
+      const parsed = JSON.parse(initialParams.get("subq") || "null");
+      if (parsed && typeof parsed === "object") initialQuery = parsed;
+      else if (persistedQuery && typeof persistedQuery === "object") initialQuery = persistedQuery;
+    } catch { /* Ignore malformed deep-link query state. */ }
+    setRouteState(
+      initialParams.get("sub") || persistedRoute?.sub || "",
+      initialParams.get("subhash") || persistedRoute?.subhash || "",
+      initialQuery,
+    );
+    syncRouteUrl(new URL(location.href));
+  }
+  routeSyncEnabled = true;
+  if (hasExplicitRoute || persistedRoute) persistRouteState();
+  const cachedStatus = readStatusCache();
+  if (cachedStatus) {
+    modules = orderModules(moduleCatalog, cachedStatus.menuOrder);
+    moduleStates.clear();
+    for (const item of cachedStatus.modules) moduleStates.set(item.key, item);
+    schedulerStatus = cachedStatus.scheduler || null;
+  }
+  renderNavigation();
+  applyHeader();
+  renderActiveView();
+  void refreshStatus();
 }
-const cachedStatus = readStatusCache();
-if (cachedStatus) {
-  modules = orderModules(moduleCatalog, cachedStatus.menuOrder);
-  moduleStates.clear();
-  for (const item of cachedStatus.modules) moduleStates.set(item.key, item);
-  schedulerStatus = cachedStatus.scheduler || null;
-}
-renderNavigation();
-applyHeader();
-renderActiveView();
-void refreshStatus();
+
+void bootstrap();

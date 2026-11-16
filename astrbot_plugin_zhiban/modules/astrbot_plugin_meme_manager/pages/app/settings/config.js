@@ -604,6 +604,38 @@ async function initPluginConfig() {
     if (node.tagName === "DETAILS") node.open = true;
   }
 
+  function syncSettingsHash(value) {
+    const hash = String(value || "").replace(/^#/, "");
+    // Keep the mutable route snapshot in sync even when the page is opened
+    // directly (about:srcdoc without the embedded bridge). Otherwise
+    // getRouteHash() would keep returning the old deep-link hash and reopen
+    // the dialog immediately after it is dismissed.
+    const route = window.MemeUI?.getRoute?.();
+    if (route && typeof route === "object") {
+      route.hash = hash;
+      route.subpageHash = hash;
+    }
+    if (window.MemeUI?.isEmbedded) {
+      const target = window.MemeUI.buildModuleTarget(
+        "settings/index.html",
+        window.MemeUI.getRouteQuery(),
+      );
+      window.MemeUI.updateRoute?.(`${target}${hash ? `#${hash}` : ""}`);
+      return;
+    }
+    window.__zhibanRouteHash = hash;
+    document.documentElement.dataset.zhibanSubpageHash = hash;
+    try {
+      history.replaceState(
+        null,
+        "",
+        `${location.pathname}${location.search}${hash ? `#${hash}` : ""}`,
+      );
+    } catch {
+      // 历史 API 不可用时保留页面内部 tab 状态。
+    }
+  }
+
   function closeSettingsDialog(restoreFocus = true) {
     if (configState.busy) return;
     restoreDialogContent();
@@ -612,11 +644,7 @@ async function initPluginConfig() {
     activeFlowGroup = "";
     dialogFieldPath = "";
     pendingGroupAnchor = "";
-    history.replaceState(
-      null,
-      "",
-      `${location.pathname}${location.search}#${active}`,
-    );
+    syncSettingsHash(active);
     updateView();
     updateState();
     if (!restoreFocus) return;
@@ -677,13 +705,7 @@ async function initPluginConfig() {
       configMask.classList.remove("hidden");
       configMask.setAttribute("aria-hidden", "false");
       configDialogBody.scrollTop = 0;
-      history.replaceState(
-        null,
-        "",
-        `${location.pathname}${location.search}#config-group-${
-          rules ? "rules" : group.id
-        }`,
-      );
+      syncSettingsHash(`config-group-${rules ? "rules" : group.id}`);
       updateView();
       updateState();
       const target = controls.get(path) || configDialogTitle;
@@ -703,11 +725,7 @@ async function initPluginConfig() {
     }
     if (dialogContent) closeSettingsDialog(false);
     active = dimension >= 0 ? "models" : tabId || group?.category || "models";
-    history.replaceState(
-      null,
-      "",
-      `${location.pathname}${location.search}#${active}`,
-    );
+    syncSettingsHash(active);
     updateView();
     const target =
       (dimension >= 0
@@ -1257,6 +1275,7 @@ async function initPluginConfig() {
         const link = document.createElement("a");
         link.href = "../semantic/index.html";
         link.dataset.navTarget = "../semantic/index.html";
+        link.dataset.moduleTarget = "semantic/index.html";
         link.textContent = "前往语义化 →";
         link.className = "semantic-prepare-link";
         header.append(link);
@@ -1644,11 +1663,7 @@ async function initPluginConfig() {
       active = tab.dataset.settingsTab;
       pendingGroupAnchor = "";
       search.value = "";
-      history.replaceState(
-        null,
-        "",
-        `${location.pathname}${location.search}#${active}`,
-      );
+      syncSettingsHash(active);
       updateView();
       window.scrollTo({ top: 0, behavior: "instant" });
     });
@@ -1702,7 +1717,8 @@ async function initPluginConfig() {
     });
   }
   function applyLocationHash() {
-    const raw = location.hash.slice(1);
+    let raw = String(window.MemeUI?.getRouteHash?.() || "").replace(/^#/, "");
+    if (!raw && !window.MemeUI?.isEmbedded) raw = location.hash.slice(1);
     const rules = raw === "config-group-rules";
     const group = raw.startsWith("config-group-")
       ? groups.find((item) => item.id === raw.slice("config-group-".length))
@@ -1718,8 +1734,24 @@ async function initPluginConfig() {
     if (configState.busy) {
       pendingGroupAnchor ||= raw;
       updateView();
-    } else if ((group || rules) && loaded)
-      navigateToSetting(group?.id, "", rules ? "rules" : "");
+    } else if ((group || rules) && loaded) {
+      // applyLocationHash is the route destination. Do not echo its target
+      // back into the router before the dialog has mounted.
+      if (
+        window.MemeUI?.isEmbedded &&
+        window.MemeUI?.getRouteHash?.() === raw
+      ) {
+        activeFlowGroup = group?.id || "";
+        mountDialogContent(rules ? rulesPanel : document.getElementById(`config-group-${group.id}`));
+        configDialogTitle.textContent = rules ? "表情包使用规则" : group.title;
+        configMask.classList.remove("hidden");
+        configMask.setAttribute("aria-hidden", "false");
+        updateView();
+        updateState();
+      } else {
+        navigateToSetting(group?.id, "", rules ? "rules" : "");
+      }
+    }
     else {
       if (dialogContent) closeSettingsDialog(false);
       updateView();
@@ -1727,6 +1759,7 @@ async function initPluginConfig() {
   }
   applyLocationHash();
   window.addEventListener("hashchange", applyLocationHash);
+  window.MemeUI?.onRouteChange?.(() => applyLocationHash());
   for (const container of [form, configDialog])
     container.addEventListener("input", (event) => {
       const control = event.target;

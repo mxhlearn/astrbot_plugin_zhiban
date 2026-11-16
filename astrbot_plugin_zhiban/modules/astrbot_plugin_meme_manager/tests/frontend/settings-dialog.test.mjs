@@ -75,7 +75,9 @@ function fixture() {
       },
     },
     updateView() {}, updateState() {},
+    window: { MemeUI: { isEmbedded: false } },
     document: {
+      documentElement: { dataset: {} },
       createComment() {
         return {
           home: null,

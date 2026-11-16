@@ -5,19 +5,319 @@ const pageNames = [
   ["semantic", "语义化", "fa-wand-magic-sparkles"],
   ["settings", "设置中心", "fa-sliders"],
 ];
+const SUBPAGE_BY_FOLDER = {
+  a_manage: "manage",
+  catalog: "catalog",
+  semantic: "semantic",
+  settings: "settings",
+};
+const zhibanModule = window.ZhibanModule || null;
+const embedded = Boolean(zhibanModule && zhibanModule.isEmbedded === true);
+if (embedded && typeof zhibanModule?.onContext === "function") {
+  zhibanModule.onContext((context) => {
+    updateRouteMetadata(context);
+    ensureBreadcrumb();
+    const subpage = document.querySelector(".meme-breadcrumb strong");
+    if (subpage) subpage.textContent = currentModuleLabel();
+    notifyRouteChange();
+  });
+}
+window.addEventListener("hashchange", () => {
+  updateRouteMetadata();
+  notifyRouteChange();
+});
+
+function moduleRoute() {
+  return zhibanModule &&
+    zhibanModule.route &&
+    typeof zhibanModule.route === "object"
+    ? zhibanModule.route
+    : {};
+}
+
+const routeListeners = new Set();
+function routeKey(route = moduleRoute()) {
+  const query = route?.query && typeof route.query === "object" ? route.query : {};
+  return JSON.stringify([
+    String(route?.path || ""),
+    String(route?.subpage || ""),
+    String(route?.hash || route?.subpageHash || "").replace(/^#/, ""),
+    query,
+  ]);
+}
+
+
+let lastRouteKey = routeKey();
+
+function routeSnapshot() {
+  const route = moduleRoute();
+  return {
+    ...route,
+    query:
+      route.query && typeof route.query === "object" ? { ...route.query } : {},
+  };
+}
+
+function notifyRouteChange(force = false) {
+  const snapshot = routeSnapshot();
+  const nextKey = routeKey(snapshot);
+  if (!force && nextKey === lastRouteKey) return;
+  lastRouteKey = nextKey;
+  for (const listener of [...routeListeners]) {
+    try {
+      listener(snapshot);
+    } catch (error) {
+      console.error("模块路由监听器执行失败：", error);
+    }
+  }
+}
+
+function onRouteChange(listener) {
+  if (typeof listener !== "function") return () => {};
+  routeListeners.add(listener);
+  return () => routeListeners.delete(listener);
+}
+
+function updateRouteMetadata(context = moduleRoute()) {
+  const route = context && typeof context === "object" ? context : {};
+  const rawPath = String(route.path || "")
+    .replace(/\\/g, "/")
+    .replace(/^(?:\.\.\/|\.\/|\/)+/, "");
+  const subpage =
+    SUBPAGE_BY_FOLDER[rawPath.split("/")[0]] || route.subpage || "";
+  if (subpage) document.documentElement.dataset.zhibanSubpage = subpage;
+  const hash = String(route.hash || route.subpageHash || "").replace(/^#/, "");
+  document.documentElement.dataset.zhibanSubpageHash = hash;
+  if (hash) window.__zhibanRouteHash = hash;
+  else delete window.__zhibanRouteHash;
+  return { subpage, hash };
+}
+
+function folderSubpage(value) {
+  const text = String(value || "")
+    .replace(/\\/g, "/")
+    .replace(/^(?:\.\.\/|\.\/|\/)+/, "");
+  return SUBPAGE_BY_FOLDER[text.split("/")[0]] || "";
+}
+
+function currentSubpage() {
+  const route = moduleRoute();
+  const raw = String(
+    route.subpage || document.documentElement.dataset.zhibanSubpage || "",
+  ).trim();
+  if (SUBPAGE_BY_FOLDER[raw]) return SUBPAGE_BY_FOLDER[raw];
+  if (Object.values(SUBPAGE_BY_FOLDER).includes(raw)) return raw;
+  return folderSubpage(route.path || "");
+}
+
+function getRouteQuery() {
+  const query = {};
+  const route = moduleRoute();
+  if (route.query && typeof route.query === "object") {
+    for (const [key, value] of Object.entries(route.query)) {
+      if (key === "asset_token" || value === null || value === undefined)
+        continue;
+      query[key] = String(value);
+    }
+  }
+  try {
+    for (const [key, value] of new URLSearchParams(location.search)) {
+      if (
+        key === "asset_token" ||
+        ["embedded", "zhiban_panel", "theme"].includes(key) ||
+        key in query
+      )
+        continue;
+      query[key] = value;
+    }
+  } catch {
+    // about:srcdoc 等不透明来源可能无法读取 location.search。
+  }
+  return query;
+}
+
+function getRouteHash() {
+  const route = moduleRoute();
+  // syncModuleRoute() may receive a read-only route snapshot from the host
+  // bridge. Its local override is authoritative after an in-page navigation.
+  const candidate =
+    window.__zhibanRouteHash ||
+    document.documentElement.dataset.zhibanSubpageHash ||
+    route.hash ||
+    route.subpageHash ||
+    "";
+  if (candidate) return String(candidate).replace(/^#/, "");
+  if (!embedded) return String(location.hash || "").replace(/^#/, "");
+  return "";
+}
+
+function splitModuleTarget(targetPath) {
+  const text = String(targetPath || "").trim();
+  const hashIndex = text.indexOf("#");
+  const hash = hashIndex >= 0 ? text.slice(hashIndex) : "";
+  const beforeHash = hashIndex >= 0 ? text.slice(0, hashIndex) : text;
+  const queryIndex = beforeHash.indexOf("?");
+  const query = new URLSearchParams(
+    queryIndex >= 0 ? beforeHash.slice(queryIndex + 1) : "",
+  );
+  const path = (queryIndex >= 0 ? beforeHash.slice(0, queryIndex) : beforeHash)
+    .replace(/^\.\.?\//, "")
+    .replace(/^\/+/, "");
+  return { path, query, hash };
+}
+
+function buildModuleTarget(path, extraParams = {}) {
+  const target = splitModuleTarget(path);
+  const query = new URLSearchParams(target.query);
+  for (const [key, value] of Object.entries(extraParams)) {
+    if (key === "asset_token") continue;
+    if (value === null || value === undefined || value === "")
+      query.delete(key);
+    else query.set(key, String(value));
+  }
+  const suffix = query.toString();
+  return `${target.path}${suffix ? `?${suffix}` : ""}${target.hash}`;
+}
+
+function normalizeModuleTarget(targetPath) {
+  const raw = String(targetPath || "").trim();
+  if (!raw || raw.startsWith("#")) return "";
+  const target = splitModuleTarget(raw);
+  const parts = [];
+  for (const part of target.path.replace(/\\/g, "/").replace(/^\/+/, "").split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (!parts.length) return "";
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  const path = parts.join("/");
+  if (!path || !(path.endsWith(".html") || path.endsWith("/"))) return "";
+  const [folder] = path.split("/");
+  if (!SUBPAGE_BY_FOLDER[folder]) return "";
+  return buildModuleTarget(path, Object.fromEntries(target.query)) + target.hash;
+}
+function navigateModuleTarget(targetPath, extraParams = {}) {
+  if (!embedded || typeof zhibanModule?.navigate !== "function") return false;
+  if (String(targetPath || "").startsWith("#")) {
+    const hash = String(targetPath).replace(/^#/, "");
+    const route = moduleRoute();
+    const path = String(route?.path || `${currentSubpage() || "a_manage"}/index.html`);
+    if (route && typeof route === "object") {
+      route.hash = hash;
+      route.subpageHash = hash;
+    }
+    window.__zhibanRouteHash = hash;
+    document.documentElement.dataset.zhibanSubpageHash = hash;
+    notifyRouteChange(true);
+    return zhibanModule.navigate(`${path}${hash ? `#${hash}` : ""}`) !== false;
+  }
+  const target = normalizeModuleTarget(
+    extraParams && Object.keys(extraParams).length
+      ? buildModuleTarget(targetPath, extraParams)
+      : targetPath,
+  );
+  if (!target) return false;
+  try {
+    return zhibanModule.navigate(target) !== false;
+  } catch {
+    return false;
+  }
+}
+
+function syncModuleRoute(targetPath, extraParams = {}) {
+  const target = normalizeModuleTarget(
+    extraParams && Object.keys(extraParams).length
+      ? buildModuleTarget(targetPath, extraParams)
+      : targetPath,
+  );
+  if (!target) return false;
+  const parsed = splitModuleTarget(target);
+  const route = moduleRoute();
+  if (route && typeof route === "object") {
+    route.path = parsed.path;
+    route.subpage = folderSubpage(parsed.path);
+    route.hash = parsed.hash.replace(/^#/, "");
+    route.subpageHash = route.hash;
+    route.query = Object.fromEntries(parsed.query);
+  }
+  document.documentElement.dataset.zhibanSubpage = folderSubpage(parsed.path);
+  document.documentElement.dataset.zhibanSubpageHash = parsed.hash.replace(
+    /^#/,
+    "",
+  );
+  if (parsed.hash) window.__zhibanRouteHash = parsed.hash.replace(/^#/, "");
+  else delete window.__zhibanRouteHash;
+  notifyRouteChange(true);
+  return true;
+}
+function currentModuleLabel(folder = currentSubpage()) {
+  const match = pageNames.find(
+    ([page]) => SUBPAGE_BY_FOLDER[page] === folder,
+  );
+  return match?.[1] || "表情互动";
+}
+
+function ensureBreadcrumb() {
+  // The parent shell owns the breadcrumb. A second crumb inside the sandboxed
+  // module would repeat 表达创作 / 表情互动 in the visible page.
+  if (embedded) return;
+  const host = document.querySelector(".page-header > div");
+  if (!host || host.querySelector(".meme-breadcrumb")) return;
+  const title = host.querySelector("h1");
+  if (title) {
+    const text = [...(title.childNodes || [])].find(
+      (node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim(),
+    );
+    if (text) text.textContent = currentModuleLabel();
+  }
+  const crumbs = document.createElement("nav");
+  crumbs.className = "meme-breadcrumb";
+  crumbs.setAttribute("aria-label", "当前位置");
+  crumbs.dataset.group = "表达创作";
+  crumbs.dataset.module = "表情互动";
+  crumbs.dataset.subpage = currentSubpage();
+  const group = document.createElement("span");
+  group.textContent = "表达创作";
+  const separator1 = document.createElement("span");
+  separator1.textContent = "/";
+  separator1.setAttribute("aria-hidden", "true");
+  const module = document.createElement("span");
+  module.textContent = "表情互动";
+  const separator2 = document.createElement("span");
+  separator2.textContent = "/";
+  separator2.setAttribute("aria-hidden", "true");
+  const subpage = document.createElement("strong");
+  subpage.textContent = currentModuleLabel();
+  crumbs.append(group, separator1, module, separator2, subpage);
+  host.prepend(crumbs);
+}
+function subpageForTarget(targetPath) {
+  return folderSubpage(splitModuleTarget(targetPath).path);
+}
+
+ensureBreadcrumb();
+window.addEventListener("error", (event) => {
+  console.error("[meme route debug]", event.message, event.filename, event.lineno);
+});
 const nav = document.querySelector(".nav-actions");
 if (nav) {
   nav.className = "nav-actions";
   nav.setAttribute("role", "navigation");
   nav.setAttribute("aria-label", "页面导航");
   nav.replaceChildren();
+  const active = currentSubpage();
   for (const [page, label, icon] of pageNames) {
     const link = document.createElement("a");
     link.className = "nav-link";
     link.dataset.navTarget = `../${page}/index.html`;
+    link.dataset.moduleTarget = `${page}/index.html`;
+    link.dataset.zhibanSubpage = subpageForTarget(link.dataset.moduleTarget);
     link.href = link.dataset.navTarget;
     if (page === "catalog") link.dataset.navView = "catalog";
-    if (location.pathname.includes(`/${page}/`))
+    if (active && link.dataset.zhibanSubpage === active)
       link.setAttribute("aria-current", "page");
     link.innerHTML = `<i class="fas ${icon} icon" aria-hidden="true"></i>${label}`;
     nav.append(link);
@@ -36,12 +336,32 @@ if (main) {
 
 let navAuthToken = "";
 function withCurrentAuthParams(targetPath, extraParams = {}) {
-  const nextUrl = new URL(targetPath, location.href);
-  for (const [key, value] of new URLSearchParams(location.search)) {
-    if (key !== "asset_token" && !nextUrl.searchParams.has(key))
-      nextUrl.searchParams.set(key, value);
+  let base = location.href;
+  if (embedded) {
+    try {
+      if (document.baseURI && !/^about:/i.test(document.baseURI))
+        base = document.baseURI;
+    } catch {
+      // 保持 about:srcdoc 下的兼容回退。
+    }
+  }
+  let nextUrl;
+  try {
+    nextUrl = new URL(targetPath, base);
+  } catch {
+    nextUrl = new URL(targetPath, "http://zhiban.invalid/");
+  }
+  const inherited = embedded
+    ? getRouteQuery()
+    : Object.fromEntries(new URLSearchParams(location.search));
+  for (const [key, value] of Object.entries(inherited)) {
+    if (key === "asset_token" || nextUrl.searchParams.has(key)) continue;
+    nextUrl.searchParams.set(key, value);
   }
   for (const [key, value] of Object.entries(extraParams)) {
+    if (key === "asset_token") {
+      if (embedded || nextUrl.origin !== location.origin) continue;
+    }
     if (value === null || value === undefined || value === "")
       nextUrl.searchParams.delete(key);
     else nextUrl.searchParams.set(key, String(value));
@@ -49,6 +369,7 @@ function withCurrentAuthParams(targetPath, extraParams = {}) {
   return nextUrl;
 }
 async function ensureNavAuthToken() {
+  if (embedded) return "";
   if (navAuthToken) return navAuthToken;
   try {
     const response = await window.AstrBotPluginPage.apiGet("bridge/auth_token");
@@ -58,14 +379,62 @@ async function ensureNavAuthToken() {
   }
   return navAuthToken;
 }
+function bindEmbeddedNavLink(link) {
+  if (!embedded || !link || link.dataset.zhibanNavBound === "true") return;
+  link.dataset.zhibanNavBound = "true";
+  const target =
+    link.dataset.moduleTarget ||
+    buildModuleTarget(link.dataset.navTarget || link.getAttribute("href"));
+  link.dataset.moduleTarget = target;
+  if (!link.dataset.zhibanSubpage)
+    link.dataset.zhibanSubpage = subpageForTarget(target);
+  link.addEventListener("click", (event) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      link.target === "_blank" ||
+      link.hasAttribute("download")
+    )
+      return;
+    // In the sandboxed shell this handler must own every known navigation,
+    // including script URLs and malformed targets. Otherwise the browser
+    // would execute or navigate before the delegated bridge click handler.
+    event.preventDefault();
+    navigateModuleTarget(target);
+  });
+}
 async function applySecureNavLinks() {
+  const links = document.querySelectorAll("a[data-nav-target]");
+  if (embedded) {
+    const active = currentSubpage();
+    for (const link of links) {
+      bindEmbeddedNavLink(link);
+      if (active && link.dataset.zhibanSubpage === active)
+        link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    }
+    return;
+  }
   const token = await ensureNavAuthToken();
-  for (const link of document.querySelectorAll("a[data-nav-target]")) {
+  for (const link of links) {
     link.href = withCurrentAuthParams(link.dataset.navTarget, {
       view: link.dataset.navView || null,
       asset_token: token || null,
     }).toString();
   }
+}
+function goToModulePage(targetPath, extraParams = {}) {
+  if (embedded) return navigateModuleTarget(targetPath, extraParams);
+  const nextUrl = withCurrentAuthParams(targetPath, {
+    ...extraParams,
+    asset_token: navAuthToken || null,
+  });
+  window.location.assign(nextUrl.toString());
+  return true;
 }
 
 const confirmMask = document.createElement("div");
@@ -253,6 +622,18 @@ window.MemeUI = {
   get navAuthToken() {
     return navAuthToken;
   },
+  isEmbedded: embedded,
+  pageLabel: currentModuleLabel,
+  getRoute: moduleRoute,
+  getRouteQuery,
+  getRouteHash,
+  currentSubpage,
+  onRouteChange,
+  updateRoute: syncModuleRoute,
+  navigate: navigateModuleTarget,
+  navigateTarget: navigateModuleTarget,
+  buildModuleTarget,
+  go: goToModulePage,
   withCurrentAuthParams,
   ensureNavAuthToken,
   applySecureNavLinks,
@@ -305,7 +686,15 @@ window.MemeUI = {
     const retry = document.createElement("button");
     retry.className = "ghost";
     retry.textContent = "重新加载";
-    retry.addEventListener("click", () => location.reload());
+    retry.addEventListener("click", () => {
+      if (embedded) {
+        const route = moduleRoute();
+        const fallback = `${currentSubpage() || "a_manage"}/index.html`;
+        navigateModuleTarget(route.path || fallback);
+        return;
+      }
+      location.reload();
+    });
     banner.append(message, retry);
     document.querySelector(".page-header")?.after(banner);
   },

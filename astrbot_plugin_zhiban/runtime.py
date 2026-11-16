@@ -139,6 +139,93 @@ class _ModuleState:
     imported: dict = field(default_factory=dict)
 
 
+class _UsageProviderProxy:
+    """Forward a provider while recording only independent provider calls.
+
+    Main-reply usage is captured by the parent ``on_llm_response`` hook where
+    the event and provider request identity are both available.  This proxy is
+    for child/internal calls that bypass that event hook and therefore have no
+    event-level response record.
+    """
+
+    def __init__(self, provider, usage, source: str):
+        self._provider = provider
+        self._usage = usage
+        self._source = source
+
+    def __getattr__(self, name):
+        return getattr(self._provider, name)
+
+    def _model(self):
+        config = getattr(self._provider, "provider_config", None)
+        if isinstance(config, dict):
+            return config.get("model")
+        model = getattr(self._provider, "model", None)
+        return str(model) if model else None
+
+    def _record(self, response, status="completed", *, is_final=False):
+        if self._usage is None or response is None:
+            return
+        try:
+            self._usage.record_response(
+                response,
+                source=self._source,
+                model=self._model(),
+                status=status,
+                is_final=is_final,
+            )
+        except Exception:
+            # Accounting must never make a successful model call fail.
+            pass
+
+    async def text_chat(self, *args, **kwargs):
+        try:
+            response = await self._provider.text_chat(*args, **kwargs)
+        except Exception:
+            raise
+        self._record(response)
+        return response
+
+    def text_chat_stream(self, *args, **kwargs):
+        async def stream():
+            last = None
+            try:
+                async for chunk in self._provider.text_chat_stream(*args, **kwargs):
+                    last = chunk
+                    yield chunk
+            except Exception:
+                if last is not None:
+                    self._record(last, status="failed", is_final=True)
+                raise
+            if last is not None:
+                self._record(last, is_final=True)
+        return stream()
+
+
+class _UsageProviderManagerProxy:
+    def __init__(self, manager, usage, source: str):
+        self._manager = manager
+        self._usage = usage
+        self._source = source
+
+    def __getattr__(self, name):
+        return getattr(self._manager, name)
+
+    def _wrap(self, provider):
+        if provider is None or self._usage is None:
+            return provider
+        return _UsageProviderProxy(provider, self._usage, self._source)
+
+    async def get_provider_by_id(self, *args, **kwargs):
+        return self._wrap(await self._manager.get_provider_by_id(*args, **kwargs))
+
+    def get_using_provider(self, *args, **kwargs):
+        return self._wrap(self._manager.get_using_provider(*args, **kwargs))
+
+    async def get_using_provider_async(self, *args, **kwargs):
+        return self._wrap(await self._manager.get_using_provider_async(*args, **kwargs))
+
+
 class _ModuleContext:
     """Forward framework services, while tracking resources owned by a module."""
 
@@ -151,9 +238,46 @@ class _ModuleContext:
         self.zhiban_data_dir.mkdir(parents=True, exist_ok=True)
         self.zhiban_module_key = state.key
         self.zhiban_parent = host.parent
+        self._usage = getattr(host.parent, "usage", None)
+        manager = getattr(self._context, "provider_manager", None)
+        self._provider_manager_proxy = (
+            _UsageProviderManagerProxy(manager, self._usage, state.key)
+            if manager is not None and self._usage is not None
+            else manager
+        )
 
     def __getattr__(self, name):
         return getattr(self._context, name)
+
+    def _wrap_provider(self, provider):
+        if provider is None or self._usage is None:
+            return provider
+        return _UsageProviderProxy(provider, self._usage, self._state.key)
+
+    @property
+    def provider_manager(self):
+        return self._provider_manager_proxy
+
+    def get_using_provider(self, *args, **kwargs):
+        return self._wrap_provider(self._context.get_using_provider(*args, **kwargs))
+
+    async def get_using_provider_async(self, *args, **kwargs):
+        return self._wrap_provider(await self._context.get_using_provider_async(*args, **kwargs))
+
+    async def llm_generate(self, *args, **kwargs):
+        response = await self._context.llm_generate(*args, **kwargs)
+        if self._usage is not None and response is not None:
+            try:
+                config = kwargs.get("chat_provider_id")
+                self._usage.record_response(
+                    response,
+                    source=self._state.key,
+                    model=str(config) if config else None,
+                    is_final=True,
+                )
+            except Exception:
+                pass
+        return response
 
     def add_llm_tools(self, *tools):
         manager = self._context.provider_manager.llm_tools

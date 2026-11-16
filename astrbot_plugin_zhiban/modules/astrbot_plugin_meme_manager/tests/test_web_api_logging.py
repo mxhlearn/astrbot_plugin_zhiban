@@ -18,6 +18,10 @@ def webui_api(monkeypatch):
     """
     app = Quart(__name__)
     app.config["TESTING"] = True
+    # Quart converts otherwise-unhandled handler errors into 500 responses
+    # unless explicitly propagating them. This fixture tests the original
+    # exception path and its traceback log, not Quart's response conversion.
+    app.config["PROPAGATE_EXCEPTIONS"] = True
     subject = web_api.WebAPIMixin()
     subject.context = SimpleNamespace(
         register_web_api=lambda route, handler, methods, desc: app.add_url_rule(
@@ -101,10 +105,23 @@ async def test_request_exception_keeps_traceback_and_propagates(webui_api, caplo
     async def handler():
         raise error
 
+    registered = []
+    original_add_url_rule = app.add_url_rule
+    def capture_add_url_rule(rule, view_func=None, **kwargs):
+        registered.append(view_func)
+        return original_add_url_rule(rule, view_func=view_func, **kwargs)
+    app.add_url_rule = capture_add_url_rule
     subject._register_webui_api("packs", handler, ["POST"], "Test endpoint")
+    assert len(registered) == 1
     with caplog.at_level(logging.INFO, logger=logger.name):
-        with pytest.raises(RuntimeError) as caught:
-            await app.test_client().post("/meme_manager/packs")
+        # Exercise the registered handler directly. Quart's HTTP test client
+        # intentionally converts unhandled exceptions into a 500 response in
+        # current releases, which is covered separately below.
+        async with app.test_request_context(
+            "/meme_manager/packs", method="POST"
+        ):
+            with pytest.raises(RuntimeError) as caught:
+                await registered[0]()
 
     assert caught.value is error
     records = [record for record in caplog.records if record.name == logger.name]
@@ -113,3 +130,20 @@ async def test_request_exception_keeps_traceback_and_propagates(webui_api, caplo
     assert "POST /meme_manager/packs 失败 耗时=" in records[0].message
     assert records[0].exc_info[1] is error
     assert records[0].exc_info[2] is not None
+
+
+@pytest.mark.asyncio
+async def test_request_exception_becomes_http_500_after_logging(webui_api, caplog):
+    subject, app, logger = webui_api
+    error = RuntimeError("Handler failed")
+
+    async def handler():
+        raise error
+
+    subject._register_webui_api("packs", handler, ["POST"], "Test endpoint")
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        response = await app.test_client().post("/meme_manager/packs")
+
+    assert response.status_code == 500
+    records = [record for record in caplog.records if record.name == logger.name]
+    assert any(record.exc_info and record.exc_info[1] is error for record in records)

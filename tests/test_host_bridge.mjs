@@ -49,6 +49,11 @@ async function createBridge() {
     constructor(type, options) {
       this.type = type;
       this.detail = options?.detail;
+      this.cancelable = options?.cancelable === true;
+      this.defaultPrevented = false;
+    }
+    preventDefault() {
+      if (this.cancelable) this.defaultPrevented = true;
     }
   }
   vm.runInNewContext(source, {
@@ -62,6 +67,8 @@ async function createBridge() {
     Error,
     JSON,
     Date,
+    URL,
+    URLSearchParams,
   });
   const sent = [];
   const events = [];
@@ -69,7 +76,10 @@ async function createBridge() {
     contentWindow: { postMessage: (message, origin) => sent.push({ message, origin }) },
     dataset: {},
     addEventListener: () => {},
-    dispatchEvent: (event) => events.push(event),
+    dispatchEvent: (event) => {
+      events.push(event);
+      return !event.defaultPrevented;
+    },
   };
   const detach = window.ZhibanBridge.attachFrame(frame, "meme", "表情互动");
   const message = listeners.get("message");
@@ -87,7 +97,7 @@ async function createBridge() {
 
 test("shell broker proxies child API requests through the authenticated Zhiban route", async () => {
   const bridge = await createBridge();
-  await bridge.sendFromChild({ kind: "ready" });
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
   assert.equal(bridge.sent[0].message.kind, "context");
   assert.equal(bridge.sent[0].origin, "*");
   assert.equal(bridge.sent[0].message.context.pluginName, "meme_manager");
@@ -105,6 +115,7 @@ test("shell broker proxies child API requests through the authenticated Zhiban r
 
 test("shell broker accepts official SDK plugin-relative endpoints and rejects path escapes", async () => {
   const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
   await bridge.sendFromChild({ kind: "request", requestId: "bare", action: "api:get", endpoint: "packs", params: {} });
   assert.deepEqual(bridge.calls[0], ["get", "ui/module_api/meme/packs", {}]);
   assert.equal(bridge.sent.at(-1).message.ok, true);
@@ -119,6 +130,7 @@ test("shell broker accepts official SDK plugin-relative endpoints and rejects pa
 
 test("shell broker never forwards a child request for an AstrBot asset token", async () => {
   const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
   await bridge.sendFromChild({ kind: "request", requestId: "token", action: "api:get", endpoint: "bridge/auth_token" });
   assert.equal(bridge.sent.at(-1).message.data.token, "");
   assert.equal(bridge.calls.length, 0);
@@ -146,6 +158,7 @@ test("shell API endpoints stay plugin-relative for AstrBot's SDK prefix", async 
 
 test("shell broker preserves upload, download and SSE lifecycle", async () => {
   const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
   await bridge.sendFromChild({ kind: "request", requestId: "u", action: "files:upload", endpoint: "meme_manager/emoji/a", fileName: "a.png", fileType: "image/png", fileLastModified: 10, fileBuffer: new ArrayBuffer(4) });
   assert.equal(bridge.sent.at(-1).message.data.name, "a.png");
 
@@ -165,7 +178,7 @@ test("shell broker preserves upload, download and SSE lifecycle", async () => {
 
 test("parent theme changes are broadcast to the active module frame", async () => {
   const bridge = await createBridge();
-  await bridge.sendFromChild({ kind: "ready" });
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
   bridge.sent.length = 0;
   bridge.emitContext({ isDark: true });
   assert.equal(bridge.sent.at(-1).message.kind, "context");
@@ -177,7 +190,7 @@ test("parent theme changes are broadcast to the active module frame", async () =
 
 test("shell distinguishes bridge readiness, app mount and sanitized app errors", async () => {
   const bridge = await createBridge();
-  await bridge.sendFromChild({ kind: "ready" });
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
   assert.equal(bridge.frame.dataset.bridgeReady, "true");
   assert.equal(bridge.frame.dataset.appReady, "false");
   const token = bridge.sent[0].message.context.appReadyToken;
@@ -206,11 +219,119 @@ test("shell distinguishes bridge readiness, app mount and sanitized app errors",
   assert.doesNotMatch(errorEvent.detail.message, /secret-token|abc|1234567890/);
 });
 
+test("child navigation is limited to registered module subpages", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
+  const token = bridge.sent[0].message.context.appReadyToken;
+  bridge.sent.length = 0;
+  await bridge.sendFromChild({
+    kind: "navigate",
+    module: "meme",
+    token,
+    path: "catalog/index.html?view=official",
+    hash: "featured",
+    query: { view: "official" },
+  });
+  const accepted = bridge.events.at(-1);
+  assert.equal(accepted.type, "zhiban:navigate");
+  assert.equal(accepted.detail.path, "catalog/index.html");
+  assert.equal(accepted.detail.hash, "featured");
+  assert.equal(JSON.stringify(accepted.detail.query), JSON.stringify({ view: "official" }));
+  assert.equal(bridge.frame.dataset.subpage, "catalog/index.html");
+  assert.equal(bridge.sent.at(-1).message.kind, "context");
+  assert.equal(bridge.sent.at(-1).message.context.subpage, "catalog/index.html");
+
+  await bridge.sendFromChild({
+    kind: "navigate",
+    module: "meme",
+    token,
+    path: "settings/../../api/status",
+  });
+  assert.equal(bridge.sent.at(-1).message.kind, "navigation:error");
+  assert.equal(bridge.sent.at(-1).message.stage, "导航");
+
+  await bridge.sendFromChild({
+    kind: "navigate",
+    module: "meme",
+    token,
+    path: "unregistered/index.html",
+  });
+  assert.equal(bridge.sent.at(-1).message.kind, "navigation:error");
+  assert.equal(bridge.frame.dataset.subpage, "catalog/index.html");
+});
+
+test("child navigation accepts an absolute URL inside the same module", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
+  const token = bridge.sent[0].message.context.appReadyToken;
+  bridge.events.length = 0;
+  await bridge.sendFromChild({
+    kind: "navigate",
+    module: "meme",
+    token,
+    path: "https://astrbot.test/api/v1/plugins/astrbot_plugin_zhiban/views/x/_t/t/modules/meme/catalog/index.html?view=catalog#official",
+  });
+  const accepted = bridge.events.at(-1);
+  assert.equal(accepted.type, "zhiban:navigate");
+  assert.equal(accepted.detail.path, "catalog/index.html");
+  assert.equal(accepted.detail.hash, "official");
+  assert.equal(accepted.detail.query.view, "catalog");
+  assert.equal(bridge.frame.dataset.subpage, "catalog/index.html");
+});
+
+test("instance messages require the exact parent-issued token", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
+  const token = bridge.sent[0].message.context.appReadyToken;
+  bridge.events.length = 0;
+
+  await bridge.sendFromChild({ kind: "app:ready", module: "meme" });
+  assert.equal(bridge.frame.dataset.appReady, "false");
+  await bridge.sendFromChild({ kind: "app:error", module: "meme", stage: "runtime", message: "missing token" });
+  assert.equal(bridge.events.length, 0);
+
+  await bridge.sendFromChild({ kind: "app:ready", module: "meme", token });
+  assert.deepEqual(bridge.events.map((event) => event.type), ["zhiban:app-ready"]);
+});
+
+test("requests wait for the bridge handshake and stay module scoped", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "request", requestId: "early", action: "api:get", endpoint: "packs" });
+  assert.equal(bridge.calls.length, 0);
+  assert.equal(bridge.sent.length, 0);
+  await bridge.sendFromChild({ kind: "request", requestId: "other", action: "api:get", endpoint: "packs" });
+  assert.equal(bridge.calls.length, 0);
+});
+
+test("child navigation from another module is ignored", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
+  bridge.events.length = 0;
+  await bridge.sendFromChild({
+    kind: "navigate",
+    module: "qzone",
+    token: bridge.sent[0].message.context.appReadyToken,
+    path: "catalog/index.html",
+  });
+  assert.equal(bridge.events.length, 0);
+  assert.equal(bridge.frame.dataset.subpage, "");
+});
+
 test("detached frames ignore late handshakes and app errors", async () => {
   const bridge = await createBridge();
   bridge.detach();
-  await bridge.sendFromChild({ kind: "ready" });
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
   await bridge.sendFromChild({ kind: "app:error", module: "meme", stage: "界面挂载", message: "late" });
   assert.equal(bridge.sent.length, 0);
+  assert.equal(bridge.events.length, 0);
+});
+
+test("detached frames ignore late navigation", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
+  const token = bridge.sent[0].message.context.appReadyToken;
+  bridge.detach();
+  bridge.events.length = 0;
+  await bridge.sendFromChild({ kind: "navigate", module: "meme", token, path: "catalog/index.html" });
   assert.equal(bridge.events.length, 0);
 });

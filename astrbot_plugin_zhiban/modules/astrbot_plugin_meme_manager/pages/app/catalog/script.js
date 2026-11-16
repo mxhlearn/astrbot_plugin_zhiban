@@ -7,6 +7,20 @@ async function initCatalogPage() {
     "https://raw.githubusercontent.com/anka-afk/astrbot-meme-pack-index/main/community-index.json";
 
   const { applySecureNavLinks } = window.MemeUI;
+  const initialRouteQuery = window.MemeUI.getRouteQuery();
+  const allowedRouteViews = new Set(["catalog", "updates"]);
+  const applyRouteView = (query = window.MemeUI.getRouteQuery()) => {
+    const view = String(query?.view || "").trim();
+    if (!allowedRouteViews.has(view)) return;
+    const target =
+      view === "updates"
+        ? document.getElementById("updates-zone")
+        : document.getElementById("official-grid");
+    if (!target) return;
+    window.requestAnimationFrame(() =>
+      target.scrollIntoView({ block: "start", behavior: "auto" }),
+    );
+  };
 
   const sourceRepoInput = document.getElementById("source-repo-input");
   const sourceInstallForm = document.getElementById("source-install-form");
@@ -279,10 +293,7 @@ async function initCatalogPage() {
             cancelText: "稍后配置",
           }).then((confirmed) => {
             if (confirmed) {
-              location.href = window.MemeUI.withCurrentAuthParams(
-                "../settings/index.html#rules",
-                { view: null, asset_token: window.MemeUI.navAuthToken || null },
-              ).toString();
+              window.MemeUI.go("../settings/index.html#rules", { view: null });
             }
           });
         }
@@ -1034,6 +1045,8 @@ async function initCatalogPage() {
   await loadCachedIndex({ silentOnMissing: true });
   await fetchIndex();
   await updates.resume();
+  applyRouteView(initialRouteQuery);
+  window.MemeUI?.onRouteChange?.((route) => applyRouteView(route?.query || {}));
 }
 
 void initCatalogPage().catch((error) => {

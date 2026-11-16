@@ -9,7 +9,57 @@
     <a id="entry" href="./a_manage/index.html">进入表情包管理</a>
     <script>
       (function redirectToManage() {
-        const nextUrl = new URL(document.getElementById("entry").href);
+        const entry = document.getElementById("entry");
+        const embedded =
+          window.ZhibanModule && window.ZhibanModule.isEmbedded === true;
+        if (embedded) {
+          const route =
+            window.ZhibanModule.route &&
+            typeof window.ZhibanModule.route === "object"
+              ? window.ZhibanModule.route
+              : {};
+          const query = new URLSearchParams();
+          const routeQuery =
+            route.query && typeof route.query === "object" ? route.query : {};
+          for (const [key, value] of Object.entries(routeQuery)) {
+            if (key === "asset_token" || value === null || value === undefined)
+              continue;
+            query.set(key, String(value));
+          }
+          for (const [key, value] of new URLSearchParams(
+            window.location.search,
+          )) {
+            if (
+              ["asset_token", "embedded", "zhiban_panel", "theme"].includes(
+                key,
+              ) ||
+              query.has(key)
+            )
+              continue;
+            query.set(key, value);
+          }
+          const routePath = String(route.path || "")
+            .replace(/\\/g, "/")
+            .replace(/^\/+/, "");
+          const targetPath =
+            routePath && routePath !== "index.html"
+              ? routePath
+              : "a_manage/index.html";
+          const hash = String(
+            route.hash || route.subpageHash || window.__zhibanRouteHash || "",
+          ).replace(/^#/, "");
+          const suffix = query.toString();
+          const target = `${targetPath}${suffix ? `?${suffix}` : ""}${
+            hash ? `#${hash}` : ""
+          }`;
+          if (
+            typeof window.ZhibanModule.navigate === "function" &&
+            window.ZhibanModule.navigate(target) !== false
+          )
+            return;
+          return;
+        }
+        const nextUrl = new URL(entry.href);
         const currentParams = new URLSearchParams(window.location.search);
         for (const [key, value] of currentParams.entries()) {
           if (!nextUrl.searchParams.has(key)) {

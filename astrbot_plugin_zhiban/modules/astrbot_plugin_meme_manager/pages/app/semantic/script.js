@@ -898,15 +898,21 @@ async function initSemanticPage() {
   }
 
   async function openCollectionReview() {
-    const token = await window.MemeUI.ensureNavAuthToken();
-    window.location.href = window.MemeUI.withCurrentAuthParams(
-      "../a_manage/index.html",
-      {
-        managed_pack_id: packSelect.value,
-        review_collection: "1",
-        asset_token: token || null,
-      },
-    ).toString();
+    const target = window.MemeUI.buildModuleTarget("a_manage/index.html", {
+      managed_pack_id: packSelect.value,
+      review_collection: "1",
+    });
+    if (window.MemeUI.isEmbedded) {
+      if (!window.MemeUI.navigate(target)) {
+        showToast("无法打开待审核表情。", "error");
+      }
+      return;
+    }
+    await window.MemeUI.ensureNavAuthToken();
+    window.MemeUI.go("../a_manage/index.html", {
+      managed_pack_id: packSelect.value,
+      review_collection: "1",
+    });
   }
 
   imagePreviewClose.addEventListener("click", closeImagePreview);

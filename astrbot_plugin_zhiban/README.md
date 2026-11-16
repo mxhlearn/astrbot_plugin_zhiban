@@ -13,7 +13,7 @@
   <a href="#安装与切换"><img alt="Version" src="https://img.shields.io/badge/version-0.3.4-2f6b4f?style=flat-square"></a>
   <a href="#兼容范围"><img alt="AstrBot" src="https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square"></a>
   <a href="#兼容范围"><img alt="OneBot" src="https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square"></a>
-  <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-106%20Python%20%2B%2023%20Node-2f6b4f?style=flat-square"></a>
+  <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-1688%20Python%20%2B%20126%20Node-2f6b4f?style=flat-square"></a>
 </p>
 
 ---
@@ -179,9 +179,10 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 
 知伴 0.3.4 的验证范围：
 
-- **Python**：106 项测试通过，另有 32 个子测试通过。
-- **Node**：23 项测试通过。
+- **Python**：1,688 项测试通过（根测试 148 + 表情模块 1,540），7 项跳过，另有 125 个子测试通过（根 32 + 表情 93）。
+- **Node**：126 项测试通过（根桥接/前端 32 + 表情前端 94）。
 - **构建**：资源清单、ZIP 和 SHA-256 校验流程可用；具体文件数以构建产物为准。
+- **统计口径**：知伴 Token 仅计知伴可识别的 Provider 最终响应；AstrBot 全局 Token 来自只读 `provider_stats`，包含非知伴调用，两者不混算；缺 usage 显示“未统计/暂无”，不伪报 0。
 - **页面**：登录态下检查五入口、总览、全局设置、十个模块入口和配置页。
 - **响应式**：1440/1024/768/390 px 的主外壳、记忆成长与图片创作通过；模块配置页在登录态下可打开。
 - **竞态**：快速并发切换停留在最后目标，没有旧页面覆盖。
@@ -196,12 +197,15 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 | --- | --- |
 | 总览、五个一级入口、全局设置 | 通过；导航选中与标题即时更新 |
 | 聊天互动、记忆成长、表情互动、语音回复、图片创作、音乐点播、QQ 动态 | 七个工作台均完成页面读取、桥接握手、业务界面挂载 |
-| 记忆成长 | 通过；真实统计与图谱接口可见 |
+| 记忆成长 | 页面可打开；未配置语言模型 Provider 时显示“业务未就绪”和具体 Provider 名称，不伪报图谱数据 |
+| 表情互动 | 表情管理、资源广场、语义化、设置中心均可达；设置深链与 9 个一级标签逐项通过；未配置视觉/向量模型时按钮禁用并说明原因 |
 | 图片创作 | 通过；无供应商时显示空态与新增入口，不把未配置误报为加载失败 |
+| 语音回复 / 音乐点播 | 页面可打开；未配置 API Key / Bilibili 登录 / FFmpeg 时显示对应限制 |
 | QQ 动态 | 通过；Cookie 失效时显示“业务未就绪”，工作台与配置入口仍可用 |
 | 模块配置 | 七个模块配置页均可打开；敏感值不回显 |
+| 设置深链刷新 | 通过；刷新后保持 `meme/settings#config-group-semantic-models`，关闭弹窗后不被旧 hash 重新打开 |
 | 快速切换 | 连续切换后停留在最后目标，只保留一个工作台 frame |
-| 未配置/未测试 | 图片供应商未配置、QQ 空间 Cookie 失效；真实发布、付费生成、真实资料修改和 Linux 部署未执行 |
+| 未配置/未测试 | 图片供应商、语音 API Key、Bilibili 登录、QQ 空间 Cookie、记忆语言模型 Provider 未配置；真实发布、付费生成、真实资料修改和 Linux 部署未执行 |
 
 ## AI 辅助开发
 

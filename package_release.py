@@ -31,6 +31,11 @@ def build():
             parts = p.relative_to(PLUGIN).parts
             if set(parts) & {"__pycache__", ".pytest_cache", ".git", "node_modules", "tests", ".buildtmp"}:
                 continue
+            # Runtime plugin data and fallback AstrBot config belong to the
+            # deployment, never to a distributable archive. t2i templates are
+            # static assets and remain included.
+            if "plugin_data" in parts or (p.name == "cmd_config.json" and "data" in parts):
+                continue
 
             if p.suffix in {".pyc", ".db", ".sqlite3", ".log"} or p.name.startswith(".env"):
                 continue

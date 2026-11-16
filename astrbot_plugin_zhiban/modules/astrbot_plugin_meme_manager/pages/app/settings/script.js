@@ -1505,7 +1505,7 @@ async function initSettingsPage() {
     }
   });
 
-  document.addEventListener(
+  window.addEventListener(
     "click",
     async (event) => {
       const link = event.target.closest("a[href]");
@@ -1520,14 +1520,26 @@ async function initSettingsPage() {
         event.altKey
       )
         return;
-      const destination = new URL(link.href, window.location.href);
-      if (
-        destination.origin === window.location.origin &&
-        destination.pathname === window.location.pathname &&
-        destination.search === window.location.search &&
-        destination.hash
-      )
+      const rawHref = link.getAttribute("href") || "";
+      if (!rawHref || rawHref.startsWith("#")) return;
+      const moduleTarget =
+        link.dataset.moduleTarget || link.dataset.navTarget || "";
+      if (window.MemeUI.isEmbedded && !moduleTarget) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        window.MemeUI.toast("该链接需要在浏览器中打开。", "info");
         return;
+      }
+      if (!window.MemeUI.isEmbedded) {
+        const destination = new URL(link.href, window.location.href);
+        if (
+          destination.origin === window.location.origin &&
+          destination.pathname === window.location.pathname &&
+          destination.search === window.location.search &&
+          destination.hash
+        )
+          return;
+      }
       const rulesDirty =
         rulesLoaded && JSON.stringify(rules) !== savedRulesSnapshot;
       if (!rulesDirty && !window.MemeSettings?.dirty) return;
@@ -1543,10 +1555,15 @@ async function initSettingsPage() {
         confirmText: "丢弃更改并离开",
         danger: true,
       });
-      if (confirmed) {
-        allowPageLeave = true;
-        window.location.assign(link.href);
+      if (!confirmed) return;
+      if (window.MemeUI.isEmbedded) {
+        if (window.MemeUI.navigateTarget(moduleTarget || rawHref))
+          allowPageLeave = true;
+        else window.MemeUI.toast("无法打开目标页面，请重试。", "error");
+        return;
       }
+      allowPageLeave = true;
+      window.MemeUI.go(rawHref);
     },
     true,
   );

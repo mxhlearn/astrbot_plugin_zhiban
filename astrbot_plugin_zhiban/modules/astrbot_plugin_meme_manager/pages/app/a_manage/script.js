@@ -17,8 +17,9 @@ async function initApp() {
 
   await applySecureNavLinks();
 
+  const initialRouteQuery = window.MemeUI.getRouteQuery();
   const managedPackIdFromUrl = String(
-    new URLSearchParams(window.location.search).get("managed_pack_id") || "",
+    initialRouteQuery.managed_pack_id || "",
   ).trim();
 
   async function apiGet(endpoint, params = {}, previewOptions = {}) {
@@ -940,7 +941,6 @@ async function initApp() {
   let pendingMoveTargetItems = [];
   let imagePreviewState = null;
   let emptyPackGuideShown = false;
-  let firstUseCatalogGuideShown = false;
 
   function formatPackOptionLabel(pack) {
     const name = String(pack?.name || pack?.id || "未命名");
@@ -1745,8 +1745,18 @@ async function initApp() {
   }
 
   function syncManagedPackQuery(managedPackId) {
-    const nextUrl = new URL(window.location.href);
     const normalized = String(managedPackId || "").trim();
+    if (window.MemeUI.isEmbedded) {
+      const target = window.MemeUI.buildModuleTarget("a_manage/index.html", {
+        ...window.MemeUI.getRouteQuery(),
+        managed_pack_id: normalized || null,
+      });
+      if (!window.MemeUI.updateRoute?.(target)) {
+        console.warn("当前上下文无法同步受控子路由，保留页面内部选择。");
+      }
+      return;
+    }
+    const nextUrl = new URL(window.location.href);
     if (normalized) {
       nextUrl.searchParams.set("managed_pack_id", normalized);
     } else {
@@ -1756,6 +1766,11 @@ async function initApp() {
   }
 
   function buildCatalogPageUrl() {
+    if (window.MemeUI.isEmbedded) {
+      return window.MemeUI.buildModuleTarget("catalog/index.html", {
+        view: "catalog",
+      });
+    }
     return withCurrentAuthParams("../catalog/index.html", {
       view: "catalog",
       asset_token: window.MemeUI.navAuthToken || null,
@@ -1764,32 +1779,15 @@ async function initApp() {
 
   async function openCatalogPage() {
     await ensureNavAuthToken();
-    window.location.href = buildCatalogPageUrl();
-  }
-
-  function isSingleEmptyPack(packs) {
-    if (!Array.isArray(packs) || packs.length !== 1) {
-      return false;
+    const target = buildCatalogPageUrl();
+    if (window.MemeUI.isEmbedded) {
+      return window.MemeUI.navigate(target);
     }
-    const onlyPack = packs[0] || {};
-    return Number(onlyPack?.image_count || 0) === 0;
-  }
-
-  async function maybeShowFirstUseCatalogGuide(packs) {
-    if (firstUseCatalogGuideShown || !isSingleEmptyPack(packs)) {
-      return;
-    }
-
-    firstUseCatalogGuideShown = true;
-    const confirmed = await showConfirm({
-      title: "第一次使用？",
-      description: "当前表情包为空。",
-      confirmLabel: "前往广场",
+    window.MemeUI.go(target, {
+      managed_pack_id: null,
+      review_collection: null,
     });
-    if (!confirmed) {
-      return;
-    }
-    await openCatalogPage();
+    return true;
   }
 
   async function loadManagePackSwitcher(preferredPackId = "") {
@@ -1864,7 +1862,6 @@ async function initApp() {
         refreshManagePackVectorStatus(selectedPackId),
       ]);
 
-      await maybeShowFirstUseCatalogGuide(packs);
       return packs;
     } catch (error) {
       managePackSelect.replaceChildren(new Option("资源包加载失败", ""));
@@ -5204,9 +5201,10 @@ async function initApp() {
         <p class="empty-pack-hint-title">暂无表情</p>
         <p class="empty-pack-hint-meta">可新建分类上传图片，或从资源广场安装表情包。</p>
         <div class="empty-pack-hint-actions">
+          <button id="empty-hint-import" type="button">导入表情</button>
           <button id="empty-hint-install-official" type="button">安装官方包</button>
           <button id="empty-hint-create-category" type="button">新建分类</button>
-          <a id="empty-hint-open-catalog" href="#">资源广场</a>
+          <button id="empty-hint-open-catalog" type="button" data-module-target="catalog/index.html?view=catalog">前往资源广场</button>
         </div>
       `
           : `<p class="empty-pack-hint-title">没有匹配的图片</p>
@@ -5251,12 +5249,21 @@ async function initApp() {
         document.getElementById("add-category-btn")?.click();
       });
 
-      const openCatalogLink = document.getElementById(
-        "empty-hint-open-catalog",
-      );
-      if (openCatalogLink) {
-        openCatalogLink.href = buildCatalogPageUrl();
-      }
+      document
+        .getElementById("empty-hint-import")
+        ?.addEventListener("click", () => {
+          if (
+            !window.MemeUI.go("settings/index.html#backup")
+          ) {
+            showToast("无法打开设置中心，请稍后重试。", "error");
+          }
+        });
+
+      document
+        .getElementById("empty-hint-open-catalog")
+        ?.addEventListener("click", () => {
+          void openCatalogPage();
+        });
     }
 
     categoryEntries.forEach(([category, emojis]) => {
@@ -7052,11 +7059,22 @@ async function initApp() {
   libraryRetryBtn.addEventListener("click", () => {
     void fetchEmojis();
   });
+  window.addEventListener("error", (event) => console.error("[meme route debug] manage error", event.message, event.error?.stack || ""));
+  window.addEventListener("unhandledrejection", (event) => console.error("[meme route debug] manage rejection", event.reason?.stack || String(event.reason)));
+  window.MemeUI?.onRouteChange?.((route) => {
+    const routePackId = String(route?.query?.managed_pack_id || "").trim();
+    if (!routePackId || routePackId === activeManagePackId) return;
+    void loadManagePackSwitcher(routePackId).then(() =>
+      fetchEmojis().catch((error) =>
+        showToast(error?.message || "切换表情包失败", "error"),
+      ),
+    );
+  });
   await loadManagePackSwitcher();
   await fetchEmojis();
   await loadCollectionReview();
   if (
-    new URLSearchParams(location.search).get("review_collection") === "1" &&
+    String(initialRouteQuery.review_collection || "") === "1" &&
     !collectionReview.open.hidden
   )
     collectionReview.open.click();

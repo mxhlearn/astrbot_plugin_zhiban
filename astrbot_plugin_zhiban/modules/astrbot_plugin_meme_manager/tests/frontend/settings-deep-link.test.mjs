@@ -4,7 +4,8 @@ import test from "node:test";
 import vm from "node:vm";
 
 const source = await readFile(new URL("../../pages/app/settings/config.js", import.meta.url), "utf8");
-const code = source.slice(source.indexOf("  function navigateToSetting("), source.indexOf("  function showFieldError("))
+const code = source.slice(source.indexOf("  function syncSettingsHash("), source.indexOf("  function closeSettingsDialog("))
+  + source.slice(source.indexOf("  function navigateToSetting("), source.indexOf("  function showFieldError("))
   + source.slice(source.indexOf("  function applyLocationHash()"), source.indexOf("  applyLocationHash();"))
   + source.slice(source.indexOf("  async function loadConfig()"), source.indexOf("  for (const tab of tabs) {", source.indexOf("  async function loadConfig()")));
 
@@ -34,14 +35,36 @@ function fixture(hash) {
     tabs: ["models", "collect", "storage", "rules", "decision"].map(id => ({ dataset: { settingsTab: id } })),
     mobileNavigation: { getClientRects: () => [] },
     history: { replaceState: (_, __, url) => { context.location.hash = url.slice(url.indexOf("#")); } },
-    document: { getElementById: () => heading, querySelector: () => heading },
+    document: {
+      getElementById: () => heading,
+      querySelector: () => heading,
+      documentElement: { dataset: {} },
+    },
     updateView() {}, updateState() {}, renderFields() {},
     notice: { hidden: true, classList: { remove() {}, add() {} } },
     api: { apiGet: async path => path === "settings/config"
       ? { revision: "next", providers: { chat: [], embedding: [] } } : { packs: [] } },
     providers: {}, providerListErrors: [], decisionServiceStatus: null, applicationFailed: false,
     packs: [], semanticStatus: null, revision: "",
-    window: { MemeUI: { applySecureNavLinks: async () => {} } },
+    window: {
+      MemeUI: {
+        applySecureNavLinks: async () => {},
+        isEmbedded: false,
+        getRouteHash: () => "",
+        getRouteQuery: () => ({ managed_pack_id: "pack-1" }),
+        buildModuleTarget: (path, extra = {}) => {
+          const query = Object.entries(extra)
+            .filter(([, value]) => value !== null && value !== undefined && value !== "")
+            .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+            .join("&");
+          return query ? `${path}?${query}` : path;
+        },
+        updateRoute: (target) => {
+          context.window.ZhibanModule.route.lastTarget = target;
+          return true;
+        },
+      },
+    },
   });
   vm.runInContext(code, context);
   return { context, events };
@@ -94,4 +117,22 @@ test("failed loads retain the link for retry; legacy and rules links preserve dr
   context.applyLocationHash();
   assert.equal(context.active, "rules");
   assert.equal(context.changes.size, 1);
+});
+
+test("embedded settings hash stays in the parent route and never rewrites srcdoc history", () => {
+  const { context } = fixture("#models");
+  let replaceCalls = 0;
+  context.window.MemeUI.isEmbedded = true;
+  context.window.MemeUI.getRouteHash = () => "config-group-semantic-models";
+  context.window.ZhibanModule = { route: {} };
+  context.history.replaceState = () => { replaceCalls += 1; };
+  context.syncSettingsHash("config-group-storage");
+  assert.equal(
+    context.window.ZhibanModule.route.lastTarget,
+    "settings/index.html?managed_pack_id=pack-1#config-group-storage",
+  );
+  assert.equal(replaceCalls, 0);
+  context.applyLocationHash();
+  assert.equal(context.active, "models");
+  assert.equal(context.pendingGroupAnchor, "semantic-models");
 });

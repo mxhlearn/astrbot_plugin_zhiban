@@ -72,7 +72,17 @@ async function createBridge(moduleKey = "meme", { withSdk = false } = {}) {
   });
   const message = listeners.get("message");
   const sendFromHost = (data) => message({ source: window.parent, data: { channel: CHANNEL, ...data } });
-  return { bridge: window.AstrBotPluginView, calls, listeners, posts, sendFromHost, root: document.documentElement };
+  return {
+    bridge: window.AstrBotPluginView,
+    calls,
+    listeners,
+    posts,
+    sendFromHost,
+    root: document.documentElement,
+    window,
+    document,
+    rootBase: new URL("http://127.0.0.1/views/知伴/_t/token/", "http://127.0.0.1/"),
+  };
 }
 
 async function answerReady(bridge, token = "tok-1") {
@@ -214,4 +224,40 @@ test("direct pages keep using the official SDK when they are not embedded", asyn
   });
   assert.deepEqual(await window.AstrBotPluginPage.apiGet("meme_manager/packs", { page: 1 }), { data: "ui/module_api/meme/packs" });
   assert.deepEqual(calls[0], ["get", "ui/module_api/meme/packs", { page: 1 }]);
+});
+
+test("embedded module exposes scoped navigation without enabling general URL transport", async () => {
+  const bridge = await createBridge("meme");
+  await answerReady(bridge, "instance-token");
+  assert.equal(bridge.bridge.isEmbedded, undefined);
+  assert.equal(bridge.bridge.route, undefined);
+  assert.equal(typeof bridge.bridge.apiGet, "function");
+  assert.equal(typeof bridge.bridge.apiPost, "function");
+  assert.equal(bridge.bridge.apiGet.length >= 1, true);
+
+});
+
+test("child navigation carries the parent-issued instance token", async () => {
+  const bridge = await createBridge("meme");
+  await answerReady(bridge, "instance-token");
+  bridge.root.dataset.appReadyToken = "instance-token";
+  const moduleApi = bridge.window.ZhibanModule;
+  assert.equal(moduleApi.navigate("catalog/index.html?view=official#featured"), true);
+  const post = bridge.posts.at(-1);
+  assert.equal(post.message.kind, "navigate");
+  assert.equal(post.message.path, "catalog/index.html");
+  assert.equal(post.message.hash, "featured");
+  assert.equal(post.message.query.view, "official");
+  assert.equal(post.message.token, "instance-token");
+});
+
+test("hash-only navigation keeps the current module path", async () => {
+  const bridge = await createBridge("meme");
+  await answerReady(bridge, "instance-token");
+  bridge.root.dataset.appReadyToken = "instance-token";
+  assert.equal(bridge.window.ZhibanModule.navigate("#config-group-semantic-models"), true);
+  const post = bridge.posts.at(-1);
+  assert.equal(post.message.path, "index.html");
+  assert.equal(post.message.hash, "config-group-semantic-models");
+  assert.equal(post.message.token, "instance-token");
 });

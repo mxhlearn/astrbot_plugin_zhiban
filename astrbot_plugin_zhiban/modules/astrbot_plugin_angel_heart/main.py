@@ -160,8 +160,16 @@ class AngelHeartPlugin(Star):
         """读取本事件 angelheart_context，供日志与后续钩子使用（不写回 req）"""
         chat_id = event.unified_msg_origin
 
-        if hasattr(event, "angelheart_context"):
+        has_angelheart_context = hasattr(event, "angelheart_context")
+        try:
+            marker = event.get_extra("_zhiban_usage_source")
+        except Exception:
+            marker = None
+        if has_angelheart_context or marker == "heart":
             try:
+                event.set_extra("_zhiban_usage_source", "heart")
+                if not has_angelheart_context:
+                    return
                 context = json.loads(event.angelheart_context)
                 if context.get("error"):
                     logger.warning(

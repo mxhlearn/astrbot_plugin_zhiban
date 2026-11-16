@@ -17,7 +17,7 @@ from astrbot.api.web import request as plugin_request
 from .catalog import MODULES, ordered_modules
 from .scheduling import BudgetScheduler
 from .ui_assets import MODULE_UI_ROOTS, resolve_module_ui_asset
-from .module_api import dashboard_session_authorized, module_api_target
+from .module_api import module_api_target
 from .settings_service import (
     SettingsConflictError,
     SettingsValidationError,
@@ -25,6 +25,8 @@ from .settings_service import (
     config_revision,
     read_module_config,
 )
+from .ui_route import RouteStore, sanitize_ui_route
+from .usage_service import UsageService, global_provider_summary
 
 
 class ZhibanPlugin(Star):
@@ -33,6 +35,10 @@ class ZhibanPlugin(Star):
         self.config = config
         self.data_dir = StarTools.get_data_dir("astrbot_plugin_zhiban")
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.ui_routes = RouteStore(self.data_dir / "ui_route.json")
+        timezone_name = config.get("timezone") if isinstance(config, dict) else None
+        self.usage = UsageService(self.data_dir / "usage.sqlite3", timezone_name)
+        self.usage.ensure_started()
         management = config.get("management", {})
         self.scheduler = BudgetScheduler(
             management.get("queue_limit", 20),
@@ -76,6 +82,18 @@ class ZhibanPlugin(Star):
             "知伴应用的模块运行状态",
         )
         register(
+            "/astrbot_plugin_zhiban/ui/usage",
+            self._ui_usage,
+            ["GET"],
+            "知伴可识别模型调用与 AstrBot 全局用量摘要",
+        )
+        register(
+            "/astrbot_plugin_zhiban/ui/route",
+            self._ui_route,
+            ["GET", "POST"],
+            "读取或保存知伴工作台的路由位置",
+        )
+        register(
             "/astrbot_plugin_zhiban/ui/global",
             self._ui_global_config,
             ["GET", "POST"],
@@ -105,6 +123,41 @@ class ZhibanPlugin(Star):
             ["GET"],
             "知伴应用内置模块页面资源",
         )
+
+    async def _ui_route(self):
+        username = self._dashboard_username()
+        if not username:
+            return JSONResponse({"status": "error", "message": "未授权"}, status_code=401)
+        if request.method.upper() == "GET":
+            return JSONResponse({"status": "ok", "data": self.ui_routes.get(username)})
+        body = await request.get_json(silent=True)
+        route = sanitize_ui_route(body)
+        if route is None:
+            return JSONResponse({"status": "error", "message": "路由格式无效"}, status_code=400)
+        try:
+            saved = self.ui_routes.put(username, route)
+        except OSError:
+            return JSONResponse({"status": "error", "message": "路由保存失败"}, status_code=503)
+        if saved is None:
+            return JSONResponse({"status": "error", "message": "路由格式无效"}, status_code=400)
+        return JSONResponse({"status": "ok", "data": saved})
+
+    def _ui_usage(self):
+        summary = self.usage.summary()
+        # StarTools stores plugin data under AstrBot/data/plugin_data; the
+        # global AstrBot SQLite database is one level above that directory.
+        global_db = Path(self.data_dir).parent.parent / "data_v4.db"
+        global_summary = global_provider_summary(global_db, self.usage.timezone)
+        payload = {
+            "scope": summary.get("scope", "zhiban"),
+            "timezone": summary.get("timezone"),
+            "started_at": summary.get("started_at"),
+            "started_day": summary.get("started_day"),
+            "days": summary.get("days"),
+            "zhiban": summary,
+            "astrbot_global": global_summary,
+        }
+        return JSONResponse(payload)
 
     def _global_config_payload(self) -> dict:
         management_schema = self._config_schema.get("management", {})
@@ -260,6 +313,53 @@ class ZhibanPlugin(Star):
             "data": {**payload, "applied_modules": applied, "failures": failures},
         }, status_code=207 if failures else 200)
 
+    async def _memory_provider_readiness(self) -> dict | None:
+        """Report missing or unavailable LLM/embedding providers honestly."""
+        manager = getattr(self.context, "provider_manager", None)
+        if manager is None:
+            return None
+        try:
+            from astrbot.core.provider.entities import ProviderType
+        except ImportError:
+            return None
+        counts: dict[object, int] = {}
+        for instance in getattr(manager, "inst_map", {}).values():
+            try:
+                provider_type = instance.meta().provider_type
+            except Exception:
+                continue
+            counts[provider_type] = counts.get(provider_type, 0) + 1
+        try:
+            chat = await manager.get_using_provider_async(ProviderType.CHAT_COMPLETION)
+            embedding = await manager.get_using_provider_async(ProviderType.EMBEDDING)
+        except Exception:
+            return None
+        if chat is None:
+            if counts.get(ProviderType.CHAT_COMPLETION, 0) == 0:
+                return {
+                    "state": "not_ready",
+                    "label": "未配置",
+                    "detail": "未配置可用的语言模型 Provider（LLM Provider）；记忆组件会继续重试，请先在 AstrBot 中配置语言模型。",
+                }
+            return {
+                "state": "not_ready",
+                "label": "暂不可用",
+                "detail": "语言模型 Provider 已配置但当前不可用；记忆组件会继续重试。",
+            }
+        if embedding is None:
+            if counts.get(ProviderType.EMBEDDING, 0) == 0:
+                return {
+                    "state": "not_ready",
+                    "label": "未配置",
+                    "detail": "未配置可用的嵌入模型 Provider；记忆检索无法就绪。",
+                }
+            return {
+                "state": "not_ready",
+                "label": "暂不可用",
+                "detail": "嵌入模型 Provider 已配置但当前不可用；记忆组件会继续重试。",
+            }
+        return None
+
     async def _module_readiness(self, module: dict) -> dict:
         """Return lifecycle-independent business readiness with honest unknowns."""
         key = module.get("key")
@@ -281,9 +381,36 @@ class ZhibanPlugin(Star):
         if key == "memory":
             initializer = getattr(instance, "initializer", None)
             if getattr(initializer, "is_failed", False):
-                return {"state": "failed", "label": "不可用", "detail": "记忆组件初始化失败"}
+                return {
+                    "state": "failed",
+                    "label": "不可用",
+                    "detail": getattr(initializer, "error_message", None)
+                    or "记忆组件初始化失败，请检查模型提供商与嵌入配置",
+                }
             if not getattr(initializer, "is_initialized", False):
-                return {"state": "starting", "label": "初始化中", "detail": "记忆组件尚未就绪"}
+                missing = []
+                # Only an explicit None means the provider is absent. A test
+                # double or older initializer without these attributes is an
+                # unknown state, not proof that the deployment is unconfigured.
+                if getattr(initializer, "llm_provider", "unknown") is None:
+                    missing.append("语言模型 Provider（LLM Provider）")
+                if getattr(initializer, "embedding_provider", "unknown") is None:
+                    missing.append("嵌入模型 Provider")
+                if missing:
+                    return {
+                        "state": "not_ready",
+                        "label": "未就绪",
+                        "detail": f"未就绪 Provider：{'、'.join(missing)}；请先在 AstrBot 中完成配置，记忆组件会继续重试。",
+                    }
+                checker = getattr(self, "_memory_provider_readiness", None)
+                provider_issue = await checker() if callable(checker) else None
+                if provider_issue is not None:
+                    return provider_issue
+                return {
+                    "state": "starting",
+                    "label": "初始化中",
+                    "detail": "记忆组件仍在等待嵌入索引或内部初始化完成",
+                }
 
         if key == "qzone":
             cache_store = getattr(self, "_readiness_cache", {})
@@ -335,16 +462,6 @@ class ZhibanPlugin(Star):
     async def _ui_status(self):
         modules = self.host.status() if self.host else []
         menu_order = self.config.get("management", {}).get("menu_order", [])
-        memory_instance = self.host.instances.get("memory") if self.host else None
-        initializer = getattr(memory_instance, "initializer", None)
-        memory_state = next((item for item in modules if item["key"] == "memory"), None)
-        if memory_state and memory_state["state"] == "running" and initializer:
-            if getattr(initializer, "is_failed", False):
-                memory_state["state"] = "failed"
-                memory_state["error"] = "LivingMemoryInitializationFailed"
-            elif not getattr(initializer, "is_initialized", False):
-                memory_state["state"] = "starting"
-                memory_state["detail"] = "正在等待记忆组件与模型提供商初始化"
         for module in modules:
             module["readiness"] = await self._module_readiness(module)
         return {
@@ -357,13 +474,23 @@ class ZhibanPlugin(Star):
         }
 
     @staticmethod
-    def _dashboard_session_authorized() -> bool:
+    def _dashboard_username() -> str | None:
         """Use AstrBot's already-validated plugin request identity."""
         try:
             from astrbot.core.workspace import API_KEY_USERNAME_PREFIX
-        except (ImportError, RuntimeError):
-            return False
-        return dashboard_session_authorized(plugin_request, API_KEY_USERNAME_PREFIX)
+            username = plugin_request.username
+        except (ImportError, RuntimeError, AttributeError):
+            return None
+        if not isinstance(username, str):
+            return None
+        username = username.strip()
+        if not username or username.startswith(API_KEY_USERNAME_PREFIX):
+            return None
+        return username
+
+    @staticmethod
+    def _dashboard_session_authorized() -> bool:
+        return bool(ZhibanPlugin._dashboard_username())
 
     def _module_schema(self, module: str) -> dict | None:
         if not any(item["key"] == module for item in MODULES):
@@ -576,8 +703,40 @@ class ZhibanPlugin(Star):
 
     @filter.on_waiting_llm_request(priority=1000000)
     async def admit(self, event: AstrMessageEvent):
-        if not await self.scheduler.admit_pipeline(event):
+        admitted = await self.scheduler.admit_pipeline(event)
+        if admitted:
+            try:
+                event.set_extra("_zhiban_usage_admitted", True)
+            except Exception:
+                pass
+        else:
             self.logger.info("知伴：请求因队列限制或停止状态未进入模型流程")
+
+    @filter.on_llm_response()
+    async def record_llm_usage(self, event, response):
+        if self.usage is None:
+            return
+        try:
+            source = event.get_extra("_zhiban_usage_source")
+            admitted = event.get_extra("_zhiban_usage_admitted")
+        except Exception:
+            source = None
+            admitted = None
+        if not source and not admitted:
+            return
+        status = "failed" if getattr(response, "role", "") == "err" else "completed"
+        inserted = self.usage.record_event(
+            event,
+            response,
+            source=str(source or "heart"),
+            status=status,
+            is_final=True,
+        )
+        if inserted:
+            try:
+                event.set_extra("_zhiban_usage_recorded", True)
+            except Exception:
+                pass
 
     @filter.on_llm_request(priority=-100000)
     async def persona_context(self, event, request):

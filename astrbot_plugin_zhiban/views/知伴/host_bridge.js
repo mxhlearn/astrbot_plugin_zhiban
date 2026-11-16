@@ -70,7 +70,82 @@
       i18n: parentContext.i18n || {},
       isDark: parentContext.isDark,
       appReadyToken: state.appReadyToken,
+      subpage: state.subpage || "",
+      subpageHash: state.subpageHash || "",
+      query: state.query || {},
     };
+  }
+
+  const MODULE_ROUTE_WHITELIST = {
+    meme: new Set([
+      "a_manage/index.html",
+      "catalog/index.html",
+      "semantic/index.html",
+      "settings/index.html",
+    ]),
+  };
+
+  function safeChildRoute(message, moduleKey) {
+    let rawTarget = String(message?.path || "").trim();
+    let urlQuery = new URLSearchParams();
+    let urlHash = "";
+    if (/^https?:\/\//i.test(rawTarget)) {
+      try {
+        const parsed = new URL(rawTarget);
+        rawTarget = parsed.pathname;
+        urlQuery = parsed.searchParams;
+        urlHash = parsed.hash.replace(/^#/, "");
+      } catch { throw new Error("模块子页面路径无效"); }
+    }
+    const marker = `/modules/${moduleKey}/`;
+    const markerIndex = rawTarget.indexOf(marker);
+    if (markerIndex >= 0) rawTarget = rawTarget.slice(markerIndex + marker.length);
+    rawTarget = rawTarget.replace(/^.*\/modules\/[^/]+\//, "");
+    let pathPart = rawTarget;
+    let targetHash = "";
+    let targetQuery = urlQuery;
+    try {
+      if (/[?#]/.test(rawTarget)) {
+        const baseOrigin = "https://zhiban.invalid/";
+        const parsed = new URL(rawTarget, baseOrigin);
+        pathPart = decodeURIComponent(parsed.pathname).replace(/^\/+/, "");
+        targetHash = parsed.hash.replace(/^#/, "");
+        targetQuery = parsed.searchParams;
+      }
+    } catch {
+      throw new Error("模块子页面路径无效");
+    }
+    const rawPath = pathPart.replace(/^\.\//, "");
+    if (!rawPath || rawPath.length > 240 || rawPath.includes("\\") || rawPath.includes("://") ||
+        rawPath.includes("?") || rawPath.includes("#") ||
+        pathPart.split("/").some((part) => !part || part === "." || part === "..")) {
+      throw new Error("模块子页面路径无效");
+    }
+    const allowed = MODULE_ROUTE_WHITELIST[moduleKey];
+    if (!allowed || !allowed.has(rawPath)) {
+      throw new Error(`模块子页面不在允许范围：${safeDetail(rawPath)}`);
+    }
+    const rawHash = String(message?.hash || targetHash || urlHash || "").trim().replace(/^#/, "");
+    if (rawHash.length > 120 || /[\s<>"']/u.test(rawHash)) throw new Error("模块子页面定位无效");
+    const query = {};
+    const input = message?.query && typeof message.query === "object" ? message.query : {};
+    let count = 0;
+    for (const [key, value] of targetQuery.entries()) {
+      if (!/^[a-z][a-z0-9_]{0,40}$/i.test(key) || count >= 8) continue;
+      const text = String(value ?? "");
+      if (text.length > 240 || /[\r\n\0]/u.test(text)) continue;
+      query[key] = text;
+      count += 1;
+    }
+    for (const [key, value] of Object.entries(input)) {
+      if (!/^[a-z][a-z0-9_]{0,40}$/i.test(key)) continue;
+      if (count >= 8) break;
+      const text = String(value ?? "");
+      if (text.length > 240 || /[\r\n\0]/u.test(text)) continue;
+      query[key] = text;
+      count += 1;
+    }
+    return { path: rawPath, hash: rawHash, query };
   }
 
   function broadcastContext() {
@@ -217,22 +292,60 @@
     trustedChildOrigins.set(frame, true);
     const message = event.data;
     if (!message || message.channel !== CHANNEL) return;
+    function trustedInstanceMessage(message) {
+      return message?.module === state.module
+        && typeof message.token === "string"
+        && message.token.length > 0
+        && message.token === state.appReadyToken;
+    }
+
     if (message.kind === "app:ready") {
-      if (message.module !== state.module) return;
-      if (message.token && state.appReadyToken && message.token !== state.appReadyToken) return;
+      if (!trustedInstanceMessage(message)) return;
       state.appReady = true;
       frame.dataset.appReady = "true";
-      frame.dispatchEvent(new CustomEvent("zhiban:app-ready", { detail: { module: message.module, token: message.token } }));
+      frame.dispatchEvent(new CustomEvent("zhiban:app-ready", { detail: { module: message.module } }));
       return;
     }
     if (message.kind === "app:error") {
-      if (message.module !== state.module) return;
-      if (message.token && state.appReadyToken && message.token !== state.appReadyToken) return;
+      if (!trustedInstanceMessage(message)) return;
       state.lastError = { stage: safeDetail(message.stage), message: safeDetail(message.message) };
       frame.dispatchEvent(new CustomEvent("zhiban:app-error", { detail: state.lastError }));
       return;
     }
+    if (message.kind === "navigate") {
+      if (message.module !== state.module) return;
+      if (!state.bridgeReady) return;
+      try {
+        if (!trustedInstanceMessage(message)) throw new Error("模块实例校验失败");
+        const route = safeChildRoute(message, state.module);
+        const detail = { module: state.module, ...route, accepted: false };
+        const navigationEvent = new CustomEvent("zhiban:navigate", { detail, cancelable: true });
+        frame.dispatchEvent(navigationEvent);
+        // The parent app handles this event asynchronously after appending a
+        // fresh module frame. Treat the event as accepted unless explicitly
+        // rejected with preventDefault.
+        if (!navigationEvent.defaultPrevented) detail.accepted = true;
+        if (detail.accepted === true) {
+          frame.dataset.subpage = route.path;
+          frame.dataset.subpageHash = route.hash;
+          state.subpage = route.path;
+          state.subpageHash = route.hash;
+          state.query = route.query;
+          post(frame, { channel: CHANNEL, kind: "context", context: frameContext(state) });
+        }
+      } catch (error) {
+        const detail = { stage: "导航", message: safeDetail(error?.message || "模块子页面无效") };
+        post(frame, {
+          channel: CHANNEL,
+          kind: "navigation:error",
+          module: state.module,
+          ...detail,
+        });
+      }
+      return;
+    }
     if (message.kind === "ready") {
+      if (message.module !== state.module) return;
       const firstReady = !state.bridgeReady;
       state.bridgeReady = true;
       frame.dataset.bridgeReady = "true";
@@ -242,7 +355,7 @@
       post(frame, { channel: CHANNEL, kind: "context", context: frameContext(state) });
       return;
     }
-    if (message.kind !== "request" || typeof message.requestId !== "string") return;
+    if (message.kind !== "request" || typeof message.requestId !== "string" || !state.bridgeReady) return;
     try {
       const data = await handleRequest(frame, state, message);
       sendResponse(frame, message.requestId, data);
@@ -266,14 +379,22 @@
       if (typeof api.ready === "function") await api.ready();
       return api.apiPost(appEndpoint(path), body);
     },
-    attachFrame(frame, module, label) {
+    attachFrame(frame, module, label, options = {}) {
       subscribeContext();
       const previous = frames.get(frame);
       if (previous) void cleanupFrame(frame, previous);
-      const state = { module, label, subscriptions: new Map(), loaded: false, bridgeReady: false, appReady: false, destroyed: false, lastError: null, appReadyToken: `${module}-${Date.now()}` };
+      const state = {
+        module, label,
+        subpage: String(options.subpage || ""),
+        subpageHash: String(options.subpageHash || ""),
+        query: options.query && typeof options.query === "object" ? { ...options.query } : {},
+        subscriptions: new Map(), loaded: false, bridgeReady: false, appReady: false,
+        destroyed: false, lastError: null, appReadyToken: `${module}-${Date.now()}`,
+      };
       frames.set(frame, state);
       frame.dataset.bridgeReady = "false";
       frame.dataset.appReady = "false";
+      frame.dataset.subpage = state.subpage;
       frame.addEventListener("load", () => {
         if (state.destroyed) return;
         if (state.loaded) void cleanupFrame(frame, state);
