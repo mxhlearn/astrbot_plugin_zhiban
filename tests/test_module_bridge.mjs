@@ -6,7 +6,7 @@ import vm from "node:vm";
 const bridgePath = new URL("../astrbot_plugin_zhiban/views/知伴/module_bridge.js", import.meta.url);
 const CHANNEL = "astrbot-plugin-page";
 
-async function createBridge(moduleKey = "meme", { withSdk = false } = {}) {
+async function createBridge(moduleKey = "meme", { withSdk = false, route = {}, bridgeSrc = "http://127.0.0.1/views/知伴/_t/token/module_bridge.js" } = {}) {
   const source = await readFile(bridgePath, "utf8");
   const calls = [];
   const original = withSdk ? {
@@ -26,6 +26,7 @@ async function createBridge(moduleKey = "meme", { withSdk = false } = {}) {
   const window = {
     AstrBotPluginView: original,
     AstrBotPluginPage: original,
+    __zhibanRoute: route,
     location: { href: "about:srcdoc", origin: "null" },
     parent: { postMessage: (message, origin) => posts.push({ message, origin }) },
     addEventListener: (name, listener) => listeners.set(name, listener),
@@ -37,7 +38,7 @@ async function createBridge(moduleKey = "meme", { withSdk = false } = {}) {
   const document = {
     currentScript: {
       dataset: { moduleKey },
-      src: "http://127.0.0.1/views/知伴/_t/token/module_bridge.js",
+      src: bridgeSrc,
     },
     readyState: "loading",
     documentElement: { dataset: { zhibanEmbedded: "true", zhibanHostFrame: "true" } },
@@ -260,4 +261,40 @@ test("hash-only navigation keeps the current module path", async () => {
   assert.equal(post.message.path, "index.html");
   assert.equal(post.message.hash, "config-group-semantic-models");
   assert.equal(post.message.token, "instance-token");
+});
+
+test("signed srcdoc URLs and real top/empty-state targets normalize to module paths", async () => {
+  const signedRoot = "https://astrbot.test/api/v1/plugins/astrbot_plugin_zhiban/views/%E7%9F%A5%E4%BC%B4/_t/header.payload.signature/";
+  const bridge = await createBridge("meme", {
+    route: { path: "semantic/index.html", subpage: "semantic", hash: "", query: {} },
+    bridgeSrc: `${signedRoot}module_bridge.js`,
+  });
+  await answerReady(bridge, "instance-token");
+  bridge.root.dataset.appReadyToken = "instance-token";
+  const api = bridge.window.ZhibanModule;
+
+  const signed = `${signedRoot}modules/meme/settings/index.html?asset_token=header.payload.signature&embedded=frame&view=deep#config-group-semantic-models`;
+  assert.equal(api.navigate(signed), true);
+  let post = bridge.posts.at(-1);
+  assert.equal(post.message.kind, "navigate");
+  assert.equal(post.message.path, "settings/index.html");
+  assert.equal(post.message.hash, "config-group-semantic-models");
+  assert.equal(JSON.stringify(post.message.query), JSON.stringify({ view: "deep" }));
+  assert.equal(post.message.token, "instance-token");
+  assert.equal(JSON.stringify(post.message).includes("header.payload.signature"), false);
+
+  assert.equal(api.navigate("../settings/index.html#config-group-semantic-models"), true);
+  post = bridge.posts.at(-1);
+  assert.equal(post.message.path, "settings/index.html");
+  assert.equal(post.message.hash, "config-group-semantic-models");
+
+  assert.equal(api.navigate("catalog/index.html?view=catalog"), true);
+  post = bridge.posts.at(-1);
+  assert.equal(post.message.path, "catalog/index.html");
+  assert.equal(JSON.stringify(post.message.query), JSON.stringify({ view: "catalog" }));
+
+  assert.equal(api.navigate(`${signedRoot}modules/qzone/index.html`), false);
+  assert.equal(api.navigate(`${signedRoot}modules/meme/settings/../catalog/index.html`), false);
+  assert.equal(api.navigate(`${signedRoot}modules/meme/settings/%2e%2e/catalog/index.html`), false);
+  assert.equal(bridge.posts.at(-1).message.kind, "navigate");
 });

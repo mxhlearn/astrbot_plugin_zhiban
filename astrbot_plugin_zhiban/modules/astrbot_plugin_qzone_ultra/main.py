@@ -1063,6 +1063,7 @@ class QzoneStablePlugin(Star):
         self._cookie_lock: asyncio.Lock | None = None
         self._video_upload_lock: asyncio.Lock | None = None
         self._last_video_upload_probe: dict[str, Any] = {}
+        self._budget = getattr(getattr(context, "zhiban_parent", None), "scheduler", None)
         self.controller = QzoneDaemonController(
             plugin_root=self.root,
             data_dir=self.data_dir,
@@ -1072,6 +1073,7 @@ class QzoneStablePlugin(Star):
             keepalive_interval=self.settings.keepalive_interval,
             user_agent=self.settings.user_agent,
             auto_start_daemon=self.settings.auto_start_daemon,
+            budget=self._budget,
         )
         self._capture_onebot_client_from_context()
         self._daemon_warmup_task: asyncio.Task | None = None

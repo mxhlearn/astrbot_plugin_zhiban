@@ -41,8 +41,8 @@ class BudgetScheduler:
         self._media = asyncio.Semaphore(self.media_capacity)
         self._maintenance = asyncio.Semaphore(self.maintenance_capacity)
         self._heavy = asyncio.Semaphore(self.heavy_capacity)
-        self._media_owner = None
-        self._maintenance_owner = None
+        self._media_owner = set()
+        self._maintenance_owner = set()
         self._heavy_owner = None
         self._waiters = Counter()
         self._holders = set()
@@ -54,6 +54,57 @@ class BudgetScheduler:
         self._closed = False
         self.rejected = 0
         self.resource_rejected = 0
+
+    def configure(
+        self,
+        *,
+        queue_limit=None,
+        session_queue_limit=None,
+        wait_seconds=None,
+        chat_concurrency=None,
+        media_concurrency=None,
+        maintenance_concurrency=None,
+        media_queue_limit=None,
+        maintenance_queue_limit=None,
+    ) -> None:
+        """Apply new limits while preserving active holders and waiters."""
+        if queue_limit is not None:
+            self.queue_limit = max(1, min(100, int(queue_limit)))
+        if session_queue_limit is not None:
+            self.session_limit = max(1, min(10, int(session_queue_limit)))
+        if wait_seconds is not None:
+            self.wait_seconds = max(1, min(600, float(wait_seconds)))
+        if media_queue_limit is not None:
+            self.media_queue_limit = max(1, min(32, int(media_queue_limit)))
+        if maintenance_queue_limit is not None:
+            self.maintenance_queue_limit = max(1, min(32, int(maintenance_queue_limit)))
+        self._resize_semaphore("chat", chat_concurrency)
+        self._resize_semaphore("media", media_concurrency)
+        self._resize_semaphore("maintenance", maintenance_concurrency)
+
+    def _resize_semaphore(self, kind: str, requested) -> None:
+        if requested is None:
+            return
+        cap_attr = "chat_capacity" if kind == "chat" else f"{kind}_capacity"
+        sem_attr = "_chat" if kind == "chat" else f"_{kind}"
+        old_capacity = int(getattr(self, cap_attr))
+        new_capacity = max(1, min(4 if kind == "chat" else 2, int(requested)))
+        if new_capacity == old_capacity:
+            return
+        active = old_capacity - getattr(getattr(self, sem_attr), "_value", old_capacity)
+        # Raising permits only; lowering removes currently free permits and does
+        # not revoke work already holding a ticket.
+        target_free = max(0, new_capacity - active)
+        current_free = getattr(getattr(self, sem_attr), "_value", old_capacity)
+        delta = target_free - current_free
+        for _ in range(max(0, delta)):
+            getattr(self, sem_attr).release()
+        for _ in range(max(0, -delta)):
+            try:
+                getattr(self, sem_attr).acquire_nowait()
+            except AttributeError:
+                pass
+        setattr(self, cap_attr, new_capacity)
 
     def status(self):
         return {
@@ -145,7 +196,7 @@ class BudgetScheduler:
 
     async def _acquire_resource(self, kind: str, semaphore, owner_attr: str) -> None:
         task = asyncio.current_task()
-        if getattr(self, owner_attr) is task:
+        if task in getattr(self, owner_attr):
             return
         waiters_attr = f"_{kind}_waiters"
         limit = getattr(self, f"{kind}_queue_limit")
@@ -170,36 +221,36 @@ class BudgetScheduler:
     async def media(self):
         """Media work with a bounded queue and shared heavy-resource budget."""
         task = asyncio.current_task()
-        if self._media_owner is task:
+        if task in self._media_owner:
             yield
             return
         await self._acquire_resource("media", self._media, "_media_owner")
-        self._media_owner = task
+        self._media_owner.add(task)
         heavy = False
         try:
             heavy = await self._acquire_heavy()
             yield
         finally:
             self._release_heavy(heavy)
-            self._media_owner = None
+            self._media_owner.discard(task)
             self._media.release()
 
     @asynccontextmanager
     async def maintenance(self):
         """Indexing/cleanup work that must not overlap other heavy jobs."""
         task = asyncio.current_task()
-        if self._maintenance_owner is task:
+        if task in self._maintenance_owner:
             yield
             return
         await self._acquire_resource("maintenance", self._maintenance, "_maintenance_owner")
-        self._maintenance_owner = task
+        self._maintenance_owner.add(task)
         heavy = False
         try:
             heavy = await self._acquire_heavy()
             yield
         finally:
             self._release_heavy(heavy)
-            self._maintenance_owner = None
+            self._maintenance_owner.discard(task)
             self._maintenance.release()
 
     async def close(self):

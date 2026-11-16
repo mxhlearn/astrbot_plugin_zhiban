@@ -331,6 +331,56 @@
                 "default": false
               }
             }
+          },
+          "reply_rhythm": {
+            "type": "object",
+            "description": "连续消息合并",
+            "hint": "聊天行为设置；只作用于同一会话、同一发送者的连续纯文本补充。命令、@、引用、媒体和已由聊天模块防抖处理的事件不合并。",
+            "items": {
+              "coalesce_enabled": {
+                "type": "bool",
+                "description": "启用连续消息合并",
+                "default": true
+              },
+              "coalesce_quiet_ms": {
+                "type": "int",
+                "description": "静默合并窗口（毫秒）",
+                "default": 1500,
+                "slider": {
+                  "min": 200,
+                  "max": 5000
+                },
+                "hint": "收到新文本后重新计时；默认 1.5 秒。"
+              },
+              "coalesce_max_ms": {
+                "type": "int",
+                "description": "最长合并窗口（毫秒）",
+                "default": 5000,
+                "slider": {
+                  "min": 1000,
+                  "max": 15000
+                },
+                "hint": "持续补充也会在最长窗口到达时及时提交。"
+              },
+              "coalesce_max_messages": {
+                "type": "int",
+                "description": "单批最多合并消息（条）",
+                "default": 8,
+                "slider": {
+                  "min": 2,
+                  "max": 20
+                }
+              },
+              "coalesce_max_chars": {
+                "type": "int",
+                "description": "单批最多合并字符（字）",
+                "default": 2000,
+                "slider": {
+                  "min": 200,
+                  "max": 8000
+                }
+              }
+            }
           }
         }
       }
@@ -3615,50 +3665,6 @@
           "qqprofile"
         ],
         "hint": "默认按预期使用频率排列，不是实测使用统计。"
-      },
-      "coalesce_enabled": {
-        "type": "bool",
-        "description": "回复节奏 · 合并同一会话同一发送者的连续普通文本",
-        "default": true,
-        "hint": "仅合并纯文本；命令、@、引用、媒体和已由聊天模块防抖处理的事件不合并。"
-      },
-      "coalesce_quiet_ms": {
-        "type": "int",
-        "description": "回复节奏 · 静默合并窗口（毫秒）",
-        "default": 1500,
-        "slider": {
-          "min": 200,
-          "max": 5000
-        },
-        "hint": "收到新文本后重新计时；默认 1.5 秒。"
-      },
-      "coalesce_max_ms": {
-        "type": "int",
-        "description": "回复节奏 · 最长合并窗口（毫秒）",
-        "default": 5000,
-        "slider": {
-          "min": 1000,
-          "max": 15000
-        },
-        "hint": "持续补充也会在最长窗口到达时及时提交。"
-      },
-      "coalesce_max_messages": {
-        "type": "int",
-        "description": "回复节奏 · 单批最多合并消息（条）",
-        "default": 8,
-        "slider": {
-          "min": 2,
-          "max": 20
-        }
-      },
-      "coalesce_max_chars": {
-        "type": "int",
-        "description": "回复节奏 · 单批最多合并字符（字）",
-        "default": 2000,
-        "slider": {
-          "min": 200,
-          "max": 8000
-        }
       },
       "chat_concurrency": {
         "type": "int",

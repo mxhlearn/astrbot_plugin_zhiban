@@ -107,6 +107,9 @@ const modulePageCache = new ModulePageCache({
   maxEntries: MODULE_PAGE_CACHE_MAX_ENTRIES,
 });
 let modulePrefetchGeneration = 0;
+let modulePrefetchTimer = null;
+let modulePrefetchController = null;
+let moduleCacheMaintenanceTimer = null;
 const ROUTE_CACHE_KEY = "zhiban-route-v1";
 const ROUTE_NAME_PREFIX = "zhiban-route:";
 const NAME_SEGMENT_SEPARATOR = "\n";
@@ -321,7 +324,18 @@ function syncTheme(context = window.AstrBotPluginView?.getContext?.()) {
 }
 
 syncTheme();
-window.AstrBotPluginView?.onContext?.(syncTheme);
+const initialTheme = document.documentElement.dataset.theme || "light";
+window.AstrBotPluginView?.onContext?.((context) => {
+  syncTheme(context);
+  if ((document.documentElement.dataset.theme || "light") !== initialTheme) {
+    // The HTML cache key includes theme; clear entries from the previous
+    // palette rather than retaining unreachable signed documents.
+    modulePageCache.clear();
+    if (activeModuleFrame) void createModuleFrameElement(moduleById(activeKey), {
+      ...currentModuleRoute(), hash: activeSubpageHash, query: activeSubpageQuery,
+    });
+  }
+});
 
 function readStatusCache() {
   let raw = null;
@@ -801,6 +815,7 @@ function clearModuleStageTimers() {
 
 function detachModuleFrame() {
   moduleFrameSequence += 1;
+  cancelModulePrefetch();
   if (activeModuleFetch) activeModuleFetch.abort();
   activeModuleFetch = null;
   clearModuleStageTimers();
@@ -922,22 +937,44 @@ function clearModulePageCache(moduleKey = "") {
 }
 
 async function prefetchModulePage(item, route, generation, epoch) {
-  if (generation !== modulePrefetchGeneration || epoch !== modulePageCache.epoch) return;
+  if (generation !== modulePrefetchGeneration || epoch !== modulePageCache.epoch ||
+      document.visibilityState === "hidden" || navigator.connection?.saveData === true) return null;
   const pageUrl = modulePageUrl(item, route);
   const key = modulePageCacheKey(item, route, pageUrl);
-  if (readCachedModulePage(key)) return;
+  if (readCachedModulePage(key)) return null;
+  const controller = new AbortController();
+  modulePrefetchController = controller;
   try {
-    const response = await fetch(pageUrl.href, { credentials: "same-origin", cache: "no-store" });
-    if (!response.ok) return;
+    const response = await fetch(pageUrl.href, {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
     const source = await response.text();
-    if (generation !== modulePrefetchGeneration || epoch !== modulePageCache.epoch) return;
+    if (generation !== modulePrefetchGeneration || epoch !== modulePageCache.epoch) return null;
     writeCachedModulePage(key, source, item.key);
-  } catch { /* Prefetch is opportunistic and must never block the workbench. */ }
+    return key;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return null;
+    return null;
+  } finally {
+    if (modulePrefetchController === controller) modulePrefetchController = null;
+  }
+}
+
+function cancelModulePrefetch() {
+  modulePrefetchGeneration += 1;
+  if (modulePrefetchTimer) clearTimeout(modulePrefetchTimer);
+  modulePrefetchTimer = null;
+  if (modulePrefetchController) modulePrefetchController.abort();
+  modulePrefetchController = null;
 }
 
 function scheduleModulePrefetch(item) {
-  if (!item?.page) return;
-  const generation = ++modulePrefetchGeneration;
+  cancelModulePrefetch();
+  if (!item?.page || document.visibilityState === "hidden" || navigator.connection?.saveData === true) return;
+  const generation = modulePrefetchGeneration;
   const epoch = modulePageCache.epoch;
   const targets = [];
   const seen = new Set();
@@ -959,10 +996,32 @@ function scheduleModulePrefetch(item) {
     if (other.key === item.key || !other.page) continue;
     add(other, { ...normalizeSubpage(other.key, ""), hash: "", query: {} });
   }
-  setTimeout(() => {
+  const queue = targets.slice();
+  modulePrefetchTimer = setTimeout(async () => {
+    modulePrefetchTimer = null;
     if (generation !== modulePrefetchGeneration || epoch !== modulePageCache.epoch) return;
-    for (const target of targets) void prefetchModulePage(target.item, target.route, generation, epoch);
+    // One read-only HTML request in flight, bounded by maxBytes admission.
+    while (queue.length && generation === modulePrefetchGeneration && epoch === modulePageCache.epoch) {
+      if (document.visibilityState === "hidden" || navigator.connection?.saveData === true) return;
+      const target = queue.shift();
+      await prefetchModulePage(target.item, target.route, generation, epoch);
+    }
   }, 300);
+}
+
+function maintainModulePageCache() {
+  modulePageCache.purgeExpired();
+}
+
+function stopModuleCacheMaintenance() {
+  if (moduleCacheMaintenanceTimer) clearInterval(moduleCacheMaintenanceTimer);
+  moduleCacheMaintenanceTimer = null;
+  cancelModulePrefetch();
+}
+
+function startModuleCacheMaintenance() {
+  if (moduleCacheMaintenanceTimer || document.visibilityState === "hidden") return;
+  moduleCacheMaintenanceTimer = setInterval(maintainModulePageCache, 15000);
 }
 
 async function createModuleFrameElement(item, requestedRoute = null) {
@@ -1063,6 +1122,7 @@ async function createModuleFrameElement(item, requestedRoute = null) {
       frame.dataset.appReady = "true";
       loadingText.textContent = `${item.label}界面已加载`;
       refresh.disabled = false;
+      startModuleCacheMaintenance();
       scheduleModulePrefetch(item);
       void refreshStatus({ background: true });
     };
@@ -2228,13 +2288,19 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     if (statusPollTimer) clearTimeout(statusPollTimer);
     statusPollTimer = null;
+    cancelModulePrefetch();
+    if (moduleCacheMaintenanceTimer) clearInterval(moduleCacheMaintenanceTimer);
+    moduleCacheMaintenanceTimer = null;
   } else {
+    startModuleCacheMaintenance();
     void refreshStatus({ background: true });
   }
 });
 window.addEventListener("pagehide", () => {
   cleanupPageObservers();
+  stopModuleCacheMaintenance();
   detachModuleFrame();
+  modulePageCache.clear();
 });
 
 async function bootstrap() {

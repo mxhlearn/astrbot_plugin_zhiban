@@ -260,7 +260,7 @@ test("child navigation is limited to registered module subpages", async () => {
   assert.equal(bridge.frame.dataset.subpage, "catalog/index.html");
 });
 
-test("child navigation accepts an absolute URL inside the same module", async () => {
+test("child navigation accepts and canonicalizes a same-origin signed module URL", async () => {
   const bridge = await createBridge();
   await bridge.sendFromChild({ kind: "ready", module: "meme" });
   const token = bridge.sent[0].message.context.appReadyToken;
@@ -269,14 +269,40 @@ test("child navigation accepts an absolute URL inside the same module", async ()
     kind: "navigate",
     module: "meme",
     token,
-    path: "https://astrbot.test/api/v1/plugins/astrbot_plugin_zhiban/views/x/_t/t/modules/meme/catalog/index.html?view=catalog#official",
+    path: "https://astrbot.test/api/v1/plugins/astrbot_plugin_zhiban/views/%E7%9F%A5%E4%BC%B4/_t/header.payload.signature/modules/meme/catalog/index.html?view=catalog&asset_token=header.payload.signature&embedded=frame&theme=dark#official",
   });
   const accepted = bridge.events.at(-1);
   assert.equal(accepted.type, "zhiban:navigate");
   assert.equal(accepted.detail.path, "catalog/index.html");
   assert.equal(accepted.detail.hash, "official");
-  assert.equal(accepted.detail.query.view, "catalog");
+  assert.equal(JSON.stringify(accepted.detail.query), JSON.stringify({ view: "catalog" }));
   assert.equal(bridge.frame.dataset.subpage, "catalog/index.html");
+  assert.equal(JSON.stringify(bridge.sent.at(-1).message).includes("header.payload.signature"), false);
+});
+
+test("child navigation rejects foreign origins and encoded path traversal", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
+  const token = bridge.sent[0].message.context.appReadyToken;
+  bridge.events.length = 0;
+
+  await bridge.sendFromChild({
+    kind: "navigate",
+    module: "meme",
+    token,
+    path: "https://evil.test/api/v1/plugins/astrbot_plugin_zhiban/views/x/_t/t/modules/meme/catalog/index.html",
+  });
+  assert.equal(bridge.sent.at(-1).message.kind, "navigation:error");
+  assert.equal(bridge.sent.at(-1).message.stage, "导航");
+
+  await bridge.sendFromChild({
+    kind: "navigate",
+    module: "meme",
+    token,
+    path: "https://astrbot.test/api/v1/plugins/astrbot_plugin_zhiban/views/x/_t/t/modules/meme/settings/%2e%2e/catalog/index.html",
+  });
+  assert.equal(bridge.sent.at(-1).message.kind, "navigation:error");
+  assert.equal(bridge.events.length, 0);
 });
 
 test("instance messages require the exact parent-issued token", async () => {

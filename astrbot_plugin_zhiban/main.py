@@ -51,11 +51,12 @@ class ZhibanPlugin(Star):
             media_queue_limit=management.get("media_queue_limit", 8),
             maintenance_queue_limit=management.get("maintenance_queue_limit", 8),
         )
+        rhythm = self._reply_rhythm_config()
         self.coalescer = MessageCoalescer(
-            quiet_seconds=management.get("coalesce_quiet_ms", 1500) / 1000,
-            max_seconds=management.get("coalesce_max_ms", 5000) / 1000,
-            max_messages=management.get("coalesce_max_messages", 8),
-            max_chars=management.get("coalesce_max_chars", 2000),
+            quiet_seconds=rhythm["coalesce_quiet_ms"] / 1000,
+            max_seconds=rhythm["coalesce_max_ms"] / 1000,
+            max_messages=rhythm["coalesce_max_messages"],
+            max_chars=rhythm["coalesce_max_chars"],
         )
         self.host = None
         self.persona = None
@@ -299,10 +300,7 @@ class ZhibanPlugin(Star):
             self.logger.exception("知伴全局配置保存失败")
             return JSONResponse({"status": "error", "message": "全局配置保存失败，请检查 AstrBot 日志"}, status_code=500)
 
-        management = self.config.get("management", {})
-        self.scheduler.queue_limit = max(1, min(100, int(management.get("queue_limit", 20))))
-        self.scheduler.session_limit = max(1, min(10, int(management.get("session_queue_limit", 4))))
-        self.scheduler.wait_seconds = max(1, min(600, float(management.get("wait_seconds", 90))))
+        self._apply_runtime_controls()
 
         failures = []
         applied = []
@@ -649,6 +647,8 @@ class ZhibanPlugin(Star):
                 self.logger.exception("知伴模块配置保存失败：%s", module)
                 return JSONResponse({"status": "error", "message": "配置保存失败，请检查 AstrBot 日志"}, status_code=500)
 
+        if module == "heart":
+            self._apply_runtime_controls()
         payload = self._module_config_payload(module)
         payload["requires_reload"] = True
         return JSONResponse({"status": "ok", "message": "配置已保存，请应用后生效", "data": payload})
@@ -715,6 +715,73 @@ class ZhibanPlugin(Star):
             headers["Cache-Control"] = "no-store, max-age=0"
         return FileResponse(path, headers=headers)
 
+    def _reply_rhythm_config(self) -> dict:
+        """Read chat behavior from 聊天互动; retain old global fields only as fallback."""
+        heart = self.config.get("heart", {}) if isinstance(self.config, dict) else {}
+        settings = heart.get("settings", {}) if isinstance(heart, dict) else {}
+        rhythm = settings.get("reply_rhythm", {}) if isinstance(settings, dict) else {}
+        management = self.config.get("management", {}) if isinstance(self.config, dict) else {}
+        if not isinstance(rhythm, dict):
+            rhythm = {}
+        if not isinstance(management, dict):
+            management = {}
+
+        def pick(name: str, default):
+            value = rhythm.get(name)
+            if value is None:
+                value = management.get(name, default)
+            return value
+
+        def integer(name: str, default: int, low: int, high: int) -> int:
+            try:
+                value = int(pick(name, default))
+            except (TypeError, ValueError):
+                value = default
+            return max(low, min(high, value))
+
+        enabled = pick("coalesce_enabled", True)
+        return {
+            "coalesce_enabled": bool(enabled),
+            "coalesce_quiet_ms": integer("coalesce_quiet_ms", 1500, 200, 5000),
+            "coalesce_max_ms": integer("coalesce_max_ms", 5000, 1000, 15000),
+            "coalesce_max_messages": integer("coalesce_max_messages", 8, 2, 20),
+            "coalesce_max_chars": integer("coalesce_max_chars", 2000, 200, 8000),
+        }
+
+    @staticmethod
+    def _safe_management_value(value, default, low, high, *, integer=False, floating=False):
+        try:
+            converted = float(value) if floating else int(value)
+        except (TypeError, ValueError, OverflowError):
+            converted = float(default) if floating else int(default)
+        if not converted == converted:
+            converted = float(default) if floating else int(default)
+        return max(low, min(high, converted))
+
+    def _apply_runtime_controls(self) -> None:
+        """Apply global resource limits and heart-owned chat behavior in-process."""
+        management = self.config.get("management", {}) if isinstance(self.config, dict) else {}
+        if not isinstance(management, dict):
+            management = {}
+        self.scheduler.configure(
+            queue_limit=self._safe_management_value(management.get("queue_limit"), 20, 1, 100),
+            session_queue_limit=self._safe_management_value(management.get("session_queue_limit"), 4, 1, 10),
+            wait_seconds=self._safe_management_value(management.get("wait_seconds"), 90, 1, 600, floating=True),
+            chat_concurrency=self._safe_management_value(management.get("chat_concurrency"), 1, 1, 4),
+            media_concurrency=self._safe_management_value(management.get("media_concurrency"), 1, 1, 2),
+            maintenance_concurrency=self._safe_management_value(management.get("maintenance_concurrency"), 1, 1, 2),
+            media_queue_limit=self._safe_management_value(management.get("media_queue_limit"), 8, 1, 32),
+            maintenance_queue_limit=self._safe_management_value(management.get("maintenance_queue_limit"), 8, 1, 32),
+        )
+
+        rhythm = self._reply_rhythm_config()
+        coalescer = getattr(self, "coalescer", None)
+        if coalescer is not None:
+            coalescer.quiet_seconds = rhythm["coalesce_quiet_ms"] / 1000
+            coalescer.max_seconds = max(coalescer.quiet_seconds, rhythm["coalesce_max_ms"] / 1000)
+            coalescer.max_messages = rhythm["coalesce_max_messages"]
+            coalescer.max_chars = rhythm["coalesce_max_chars"]
+
     def _coalesce_key(self, event: AstrMessageEvent) -> str:
         try:
             sender = str(event.get_sender_id() or "")
@@ -723,8 +790,7 @@ class ZhibanPlugin(Star):
         return f"{event.unified_msg_origin}|{sender}"
 
     def _coalesce_eligible(self, event: AstrMessageEvent) -> bool:
-        management = self.config.get("management", {})
-        if not management.get("coalesce_enabled", True):
+        if not self._reply_rhythm_config()["coalesce_enabled"]:
             return False
         try:
             if not event.is_private_chat() and event.get_extra("angelheart_debounce_kind"):
@@ -863,10 +929,14 @@ class ZhibanPlugin(Star):
 
     async def terminate(self):
         await self.coalescer.close()
-        await self.scheduler.close()
-        if self.host is not None:
-            await self.host.close()
-        if self.persona is not None and hasattr(self.persona, "close"):
-            result = self.persona.close()
-            if hasattr(result, "__await__"):
-                await result
+        # Shut down hosted modules while their maintenance tickets can still be
+        # acquired; close the scheduler only after module resources are released.
+        try:
+            if self.host is not None:
+                await self.host.close()
+            if self.persona is not None and hasattr(self.persona, "close"):
+                result = self.persona.close()
+                if hasattr(result, "__await__"):
+                    await result
+        finally:
+            await self.scheduler.close()

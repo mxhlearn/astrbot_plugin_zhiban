@@ -85,66 +85,106 @@
     ]),
   };
 
-  function safeChildRoute(message, moduleKey) {
-    let rawTarget = String(message?.path || "").trim();
-    let urlQuery = new URLSearchParams();
-    let urlHash = "";
-    if (/^https?:\/\//i.test(rawTarget)) {
-      try {
-        const parsed = new URL(rawTarget);
-        rawTarget = parsed.pathname;
-        urlQuery = parsed.searchParams;
-        urlHash = parsed.hash.replace(/^#/, "");
-      } catch { throw new Error("模块子页面路径无效"); }
-    }
-    const marker = `/modules/${moduleKey}/`;
-    const markerIndex = rawTarget.indexOf(marker);
-    if (markerIndex >= 0) rawTarget = rawTarget.slice(markerIndex + marker.length);
-    rawTarget = rawTarget.replace(/^.*\/modules\/[^/]+\//, "");
-    let pathPart = rawTarget;
-    let targetHash = "";
-    let targetQuery = urlQuery;
+  const ROUTE_QUERY_KEY_RE = /^[a-z][a-z0-9_]{0,40}$/i;
+  const RESERVED_ROUTE_QUERY_KEYS = new Set(["asset_token", "embedded", "zhiban_panel", "theme"]);
+
+  function decodeModuleRoutePath(pathname) {
+    let decoded;
     try {
-      if (/[?#]/.test(rawTarget)) {
-        const baseOrigin = "https://zhiban.invalid/";
-        const parsed = new URL(rawTarget, baseOrigin);
-        pathPart = decodeURIComponent(parsed.pathname).replace(/^\/+/, "");
-        targetHash = parsed.hash.replace(/^#/, "");
-        targetQuery = parsed.searchParams;
-      }
+      decoded = decodeURIComponent(String(pathname || ""));
     } catch {
       throw new Error("模块子页面路径无效");
     }
-    const rawPath = pathPart.replace(/^\.\//, "");
-    if (!rawPath || rawPath.length > 240 || rawPath.includes("\\") || rawPath.includes("://") ||
-        rawPath.includes("?") || rawPath.includes("#") ||
-        pathPart.split("/").some((part) => !part || part === "." || part === "..")) {
+    if (!decoded || decoded.includes("\\") || decoded.includes("\0") ||
+        decoded.includes("://") || decoded.includes("?") || decoded.includes("#") ||
+        /(?:^|\/)\.{1,2}(?:\/|$)/.test(decoded)) {
+      throw new Error("模块子页面路径无效");
+    }
+    return decoded;
+  }
+
+  function safeChildRoute(message, moduleKey) {
+    const rawTarget = String(message?.path || "").trim();
+    if (!rawTarget || rawTarget.includes("\\")) throw new Error("模块子页面路径无效");
+
+    // The child may report either a module-relative path or the signed asset
+    // URL visible in its srcdoc. Only the latter is absolute; never accept an
+    // arbitrary origin or an absolute path that is not rooted at this module.
+    const absolute = /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(rawTarget);
+    const rawPathText = rawTarget.split(/[?#]/, 1)[0];
+    let decodedRawPath = rawPathText;
+    try {
+      decodedRawPath = decodeURIComponent(rawPathText);
+    } catch {
+      throw new Error("模块子页面路径无效");
+    }
+    if (absolute && /(?:^|\/)\.{1,2}(?:\/|$)/.test(decodedRawPath)) {
+      throw new Error("模块子页面路径无效");
+    }
+
+    let pathname = rawTarget;
+    let targetQuery = new URLSearchParams();
+    let targetHash = "";
+    if (absolute) {
+      let parsed;
+      try {
+        parsed = new URL(rawTarget, window.location.origin);
+      } catch {
+        throw new Error("模块子页面路径无效");
+      }
+      if (!/^https?:$/.test(parsed.protocol) || parsed.origin !== window.location.origin) {
+        throw new Error("模块子页面来源无效");
+      }
+      pathname = parsed.pathname;
+      targetQuery = parsed.searchParams;
+      targetHash = parsed.hash.replace(/^#/, "");
+    } else if (/[?#]/.test(rawTarget)) {
+      let parsed;
+      try {
+        parsed = new URL(rawTarget, "https://zhiban.invalid/");
+      } catch {
+        throw new Error("模块子页面路径无效");
+      }
+      pathname = parsed.pathname;
+      targetQuery = parsed.searchParams;
+      targetHash = parsed.hash.replace(/^#/, "");
+    }
+
+    const decodedPath = decodeModuleRoutePath(pathname);
+    const marker = `/modules/${moduleKey}/`;
+    const markerIndex = decodedPath.indexOf(marker);
+    let rawPath;
+    if (markerIndex >= 0) {
+      rawPath = decodedPath.slice(markerIndex + marker.length);
+    } else {
+      if (absolute) throw new Error("模块子页面不在允许范围");
+      rawPath = decodedPath.replace(/^\.\//, "").replace(/^\/+/, "");
+    }
+    if (rawPath.endsWith("/")) rawPath += "index.html";
+    if (!rawPath || rawPath.length > 240 || rawPath.includes("?") || rawPath.includes("#") ||
+        rawPath.split("/").some((part) => !part || part === "." || part === "..")) {
       throw new Error("模块子页面路径无效");
     }
     const allowed = MODULE_ROUTE_WHITELIST[moduleKey];
     if (!allowed || !allowed.has(rawPath)) {
       throw new Error(`模块子页面不在允许范围：${safeDetail(rawPath)}`);
     }
-    const rawHash = String(message?.hash || targetHash || urlHash || "").trim().replace(/^#/, "");
+
+    const rawHash = String(message?.hash || targetHash || "").trim().replace(/^#/, "");
     if (rawHash.length > 120 || /[\s<>"']/u.test(rawHash)) throw new Error("模块子页面定位无效");
+
     const query = {};
+    const seen = new Set();
+    const addQuery = (key, value) => {
+      if (!ROUTE_QUERY_KEY_RE.test(key) || RESERVED_ROUTE_QUERY_KEYS.has(key) || seen.size >= 8) return;
+      const text = String(value ?? "");
+      if (text.length > 240 || /[\r\n\0]/u.test(text)) return;
+      query[key] = text;
+      seen.add(key);
+    };
+    for (const [key, value] of targetQuery.entries()) addQuery(key, value);
     const input = message?.query && typeof message.query === "object" ? message.query : {};
-    let count = 0;
-    for (const [key, value] of targetQuery.entries()) {
-      if (!/^[a-z][a-z0-9_]{0,40}$/i.test(key) || count >= 8) continue;
-      const text = String(value ?? "");
-      if (text.length > 240 || /[\r\n\0]/u.test(text)) continue;
-      query[key] = text;
-      count += 1;
-    }
-    for (const [key, value] of Object.entries(input)) {
-      if (!/^[a-z][a-z0-9_]{0,40}$/i.test(key)) continue;
-      if (count >= 8) break;
-      const text = String(value ?? "");
-      if (text.length > 240 || /[\r\n\0]/u.test(text)) continue;
-      query[key] = text;
-      count += 1;
-    }
+    for (const [key, value] of Object.entries(input)) addQuery(key, value);
     return { path: rawPath, hash: rawHash, query };
   }
 

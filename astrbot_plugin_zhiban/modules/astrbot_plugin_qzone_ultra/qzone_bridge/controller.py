@@ -239,6 +239,7 @@ class QzoneDaemonController:
         keepalive_interval: int = 120,
         user_agent: str = "",
         auto_start_daemon: bool = True,
+        budget: Any | None = None,
     ) -> None:
         self.plugin_root = plugin_root
         self.data_dir = data_dir
@@ -249,6 +250,8 @@ class QzoneDaemonController:
         self.keepalive_interval = keepalive_interval
         self.user_agent = user_agent
         self.auto_start_daemon = auto_start_daemon
+        self._budget = budget
+        self._budget_events = {"starts": 0, "stops": 0, "rejections": 0}
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(request_timeout), trust_env=False)
         self._lock = asyncio.Lock()
         self._process: subprocess.Popen | None = None
@@ -595,95 +598,119 @@ class QzoneDaemonController:
             detail={"daemon_port": port, "checked_ports": f"{port + 1}-{port + 32}"},
         )
 
+    def _maintenance_context(self):
+        """Return a shared heavy-resource ticket only for daemon lifecycle work."""
+        budget = self._budget
+        factory = getattr(budget, "maintenance", None)
+        return factory() if callable(factory) else None
+
+    async def _run_daemon_budgeted(self, operation: str, callback):
+        context = self._maintenance_context()
+        if context is None:
+            return await callback()
+        try:
+            async with context:
+                return await callback()
+        except RuntimeError:
+            self._budget_events["rejections"] += 1
+            raise
+
     async def ensure_running(self) -> dict[str, Any]:
         async with self._lock:
-            runtime = self._runtime()
-            port = runtime.daemon_port or self.default_port
-            if await self._probe_health(port):
-                return self._merge_health_status(
-                    self._status_from_state(self.store.read(), daemon_state="ready"),
-                    self._cached_health_data(port, runtime.secret),
-                )
-            await self._stop_incompatible_daemon(port, runtime.secret)
+            async def start_locked():
+                self._budget_events["starts"] += 1
+                return await self._ensure_running_locked()
 
-            if not self._daemon_script().exists():
-                exc = DaemonUnavailableError(
-                    "找不到 daemon_main.py",
-                    detail={"path": str(self._daemon_script())},
-                )
+            return await self._run_daemon_budgeted("start", start_locked)
+
+    async def _ensure_running_locked(self) -> dict[str, Any]:
+        runtime = self._runtime()
+        port = runtime.daemon_port or self.default_port
+        if await self._probe_health(port):
+            return self._merge_health_status(
+                self._status_from_state(self.store.read(), daemon_state="ready"),
+                self._cached_health_data(port, runtime.secret),
+            )
+        await self._stop_incompatible_daemon(port, runtime.secret)
+
+        if not self._daemon_script().exists():
+            exc = DaemonUnavailableError(
+                "找不到 daemon_main.py",
+                detail={"path": str(self._daemon_script())},
+            )
+            self._record_daemon_start_error(exc, port=port)
+            raise exc
+
+        attempts: list[dict[str, Any]] = []
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                port = await self._available_daemon_port(port)
+            except DaemonUnavailableError as exc:
                 self._record_daemon_start_error(exc, port=port)
-                raise exc
+                raise
 
-            attempts: list[dict[str, Any]] = []
-            last_exc: Exception | None = None
-            for attempt in range(3):
-                try:
-                    port = await self._available_daemon_port(port)
-                except DaemonUnavailableError as exc:
-                    self._record_daemon_start_error(exc, port=port)
-                    raise
+            if port != runtime.daemon_port:
+                self.store.update(lambda state: setattr(state.runtime, "daemon_port", port))
 
-                if port != runtime.daemon_port:
-                    self.store.update(lambda state: setattr(state.runtime, "daemon_port", port))
-
-                try:
-                    self._process = self._spawn_daemon(port)
-                except OSError as exc:
-                    last_exc = exc
-                    attempts.append(self._daemon_start_detail(port, error=str(exc)))
-                    if attempt < 2:
-                        port += 1
-                        continue
-                    error = DaemonUnavailableError(
-                        "QQ 空间 daemon 启动失败",
-                        detail={"attempts": attempts},
-                    )
-                    self._record_daemon_start_error(error, port=port)
-                    raise error from exc
-
-                deadline = asyncio.get_running_loop().time() + self.start_timeout
-                while asyncio.get_running_loop().time() < deadline:
-                    if await self._probe_health(port):
-                        runtime.daemon_port = port
-                        runtime.daemon_pid = self._process.pid if self._process else 0
-                        runtime.version = BRIDGE_VERSION
-                        runtime.started_at = now_iso()
-                        runtime.last_seen_at = now_iso()
-
-                        def update(state):
-                            state.runtime = runtime
-                            if isinstance(state.session.last_error, dict) and state.session.last_error.get("type") == "DaemonUnavailableError":
-                                state.session.last_error = None
-
-                        state = self.store.update(update)
-                        self._health_cache = (
-                            port,
-                            runtime.secret,
-                            True,
-                            asyncio.get_running_loop().time() + self._health_cache_ttl,
-                        )
-                        return self._merge_health_status(
-                            self._status_from_state(state, daemon_state="ready"),
-                            self._cached_health_data(port, runtime.secret),
-                        )
-                    if self._process and self._process.poll() is not None:
-                        break
-                    await asyncio.sleep(0.5)
-
-                returncode = self._process.poll() if self._process else None
-                attempts.append(self._daemon_start_detail(port, returncode=returncode))
-                if returncode is not None and attempt < 2:
-                    self._invalidate_health_cache()
+            try:
+                self._process = self._spawn_daemon(port)
+            except OSError as exc:
+                last_exc = exc
+                attempts.append(self._daemon_start_detail(port, error=str(exc)))
+                if attempt < 2:
                     port += 1
                     continue
-                break
+                error = DaemonUnavailableError(
+                    "QQ 空间 daemon 启动失败",
+                    detail={"attempts": attempts},
+                )
+                self._record_daemon_start_error(error, port=port)
+                raise error from exc
 
-            error = DaemonUnavailableError(
-                "QQ 空间 daemon 启动超时",
-                detail={"attempts": attempts, "error": str(last_exc) if last_exc else ""},
-            )
-            self._record_daemon_start_error(error, port=port)
-            raise error
+            deadline = asyncio.get_running_loop().time() + self.start_timeout
+            while asyncio.get_running_loop().time() < deadline:
+                if await self._probe_health(port):
+                    runtime.daemon_port = port
+                    runtime.daemon_pid = self._process.pid if self._process else 0
+                    runtime.version = BRIDGE_VERSION
+                    runtime.started_at = now_iso()
+                    runtime.last_seen_at = now_iso()
+
+                    def update(state):
+                        state.runtime = runtime
+                        if isinstance(state.session.last_error, dict) and state.session.last_error.get("type") == "DaemonUnavailableError":
+                            state.session.last_error = None
+
+                    state = self.store.update(update)
+                    self._health_cache = (
+                        port,
+                        runtime.secret,
+                        True,
+                        asyncio.get_running_loop().time() + self._health_cache_ttl,
+                    )
+                    return self._merge_health_status(
+                        self._status_from_state(state, daemon_state="ready"),
+                        self._cached_health_data(port, runtime.secret),
+                    )
+                if self._process and self._process.poll() is not None:
+                    break
+                await asyncio.sleep(0.5)
+
+            returncode = self._process.poll() if self._process else None
+            attempts.append(self._daemon_start_detail(port, returncode=returncode))
+            if returncode is not None and attempt < 2:
+                self._invalidate_health_cache()
+                port += 1
+                continue
+            break
+
+        error = DaemonUnavailableError(
+            "QQ 空间 daemon 启动超时",
+            detail={"attempts": attempts, "error": str(last_exc) if last_exc else ""},
+        )
+        self._record_daemon_start_error(error, port=port)
+        raise error
 
     async def _request(
         self,
@@ -1115,7 +1142,11 @@ class QzoneDaemonController:
 
     async def stop_daemon(self) -> None:
         async with self._lock:
-            await self._stop_daemon_locked()
+            async def stop_locked():
+                self._budget_events["stops"] += 1
+                await self._stop_daemon_locked()
+
+            await self._run_daemon_budgeted("stop", stop_locked)
 
     async def _stop_daemon_locked(self) -> None:
         state = self.store.read()

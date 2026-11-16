@@ -65,10 +65,45 @@
     };
   }
 
+  const ROUTE_QUERY_KEY_RE = /^[a-z][a-z0-9_]{0,40}$/i;
+  const RESERVED_ROUTE_QUERY_KEYS = new Set(['asset_token', 'embedded', 'zhiban_panel', 'theme']);
+
+  function moduleRelativePath(url) {
+    let pathname;
+    try {
+      pathname = decodeURIComponent(String(url?.pathname || ''));
+    } catch {
+      return '';
+    }
+    if (!pathname || pathname.includes('\\') || pathname.includes('\0') ||
+        pathname.includes('://') || pathname.includes('?') || pathname.includes('#') ||
+        /(?:^|\/)\.{1,2}(?:\/|$)/.test(pathname)) return '';
+    const marker = `/modules/${moduleKey}/`;
+    const markerIndex = pathname.indexOf(marker);
+    if (markerIndex < 0) return '';
+    let path = pathname.slice(markerIndex + marker.length);
+    if (path.endsWith('/')) path += 'index.html';
+    if (!path || path.length > 240 || path.split('/').some((part) => !part || part === '.' || part === '..')) return '';
+    return path;
+  }
+
   function resolveModuleTarget(target) {
     const pageRoot = modulePageRoot();
     const rawTarget = String(target || '').trim();
-    if (!rawTarget) return null;
+    if (!rawTarget || rawTarget.includes('\\')) return null;
+    const absolute = /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(rawTarget);
+    const rawPathText = rawTarget.split(/[?#]/, 1)[0];
+    let decodedRawPath = rawPathText;
+    try {
+      decodedRawPath = decodeURIComponent(rawPathText);
+    } catch {
+      return null;
+    }
+    // Relative ../ links are valid from a nested page and are contained by
+    // the two controlled bases below. Absolute signed URLs must never contain
+    // traversal segments before URL normalization.
+    if (absolute && /(?:^|\/)\.{1,2}(?:\/|$)/.test(decodedRawPath)) return null;
+
     // data-module-target values are module-relative; ordinary anchors are
     // page-relative. Try both controlled bases, but always reject URLs outside
     // this exact module root (never cross-module or sandbox escape).
@@ -77,14 +112,21 @@
       const candidate = rawTarget.startsWith('#') ? `${initialPath}${rawTarget}` : rawTarget;
       let url;
       try { url = new URL(candidate, base); } catch { continue; }
-      if (url.origin !== moduleRoot.origin || !url.pathname.startsWith(moduleRoot.pathname)) continue;
-      const path = url.pathname.slice(moduleRoot.pathname.length);
-      if (!path || path.includes('\\') || path.split('/').some((part) => !part || part === '.' || part === '..')) continue;
+      if (url.origin !== moduleRoot.origin) continue;
+      const path = moduleRelativePath(url);
+      if (!path) continue;
       const query = {};
+      let count = 0;
       for (const [key, value] of url.searchParams) {
-        if (!['asset_token', 'embedded', 'zhiban_panel', 'theme'].includes(key)) query[key] = value;
+        if (!ROUTE_QUERY_KEY_RE.test(key) || RESERVED_ROUTE_QUERY_KEYS.has(key) || count >= 8) continue;
+        const text = String(value ?? '');
+        if (text.length > 240 || /[\r\n\0]/u.test(text)) continue;
+        query[key] = text;
+        count += 1;
       }
-      return { path, hash: url.hash.replace(/^#/, ''), query };
+      const hash = url.hash.replace(/^#/, '');
+      if (hash.length > 120 || /[\s<>"']/u.test(hash)) continue;
+      return { path, hash, query };
     }
     return null;
   }

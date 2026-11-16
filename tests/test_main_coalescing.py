@@ -38,7 +38,7 @@ class FakeEvent:
 class MainCoalescingTests(unittest.TestCase):
     def setUp(self):
         self.plugin = object.__new__(ZhibanPlugin)
-        self.plugin.config = {"management": {"coalesce_enabled": True}}
+        self.plugin.config = {"heart": {"settings": {"reply_rhythm": {"coalesce_enabled": True}}}}
 
     def test_private_plain_text_is_eligible(self):
         self.assertTrue(self.plugin._coalesce_eligible(FakeEvent("你好")))
@@ -59,6 +59,35 @@ class MainCoalescingTests(unittest.TestCase):
         self.assertEqual(event.message_obj.message_id, "m1")
         self.assertEqual(event.get_extra("_zhiban_coalesced_count"), 2)
 
+    def test_reply_rhythm_is_owned_by_heart_and_old_global_is_fallback(self):
+        self.plugin.config = {
+            "heart": {"settings": {"reply_rhythm": {
+                "coalesce_enabled": False,
+                "coalesce_quiet_ms": 900,
+                "coalesce_max_ms": 3000,
+                "coalesce_max_messages": 5,
+                "coalesce_max_chars": 1200,
+            }}},
+            "management": {
+                "coalesce_enabled": True,
+                "coalesce_quiet_ms": 1500,
+                "coalesce_max_ms": 5000,
+                "coalesce_max_messages": 8,
+                "coalesce_max_chars": 2000,
+            },
+        }
+        self.assertFalse(self.plugin._coalesce_eligible(FakeEvent("你好")))
+        self.assertEqual(self.plugin._reply_rhythm_config(), {
+            "coalesce_enabled": False,
+            "coalesce_quiet_ms": 900,
+            "coalesce_max_ms": 3000,
+            "coalesce_max_messages": 5,
+            "coalesce_max_chars": 1200,
+        })
+        self.plugin.config = {"management": {"coalesce_enabled": False, "coalesce_quiet_ms": 700}}
+        self.assertEqual(self.plugin._reply_rhythm_config()["coalesce_quiet_ms"], 700)
+        self.assertFalse(self.plugin._reply_rhythm_config()["coalesce_enabled"])
+
 
 
 class FakeScheduler:
@@ -73,7 +102,7 @@ class FakeScheduler:
 class MainCoalescingIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_two_plain_events_reach_admission_once_with_merged_text(self):
         plugin = object.__new__(ZhibanPlugin)
-        plugin.config = {"management": {"coalesce_enabled": True}}
+        plugin.config = {"heart": {"settings": {"reply_rhythm": {"coalesce_enabled": True}}}}
         plugin.coalescer = MessageCoalescer(quiet_seconds=0.05, max_seconds=0.3)
         plugin.scheduler = FakeScheduler()
         first = FakeEvent("第一句")

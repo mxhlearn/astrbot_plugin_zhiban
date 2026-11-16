@@ -153,6 +153,45 @@ async def test_close_cancels_resource_waiter():
     await owner
 
 
+@pytest.mark.asyncio
+async def test_live_configure_applies_global_limits_and_preserves_active_owner():
+    scheduler = BudgetScheduler(chat_concurrency=1, media_concurrency=1, maintenance_concurrency=1)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def holder():
+        async with scheduler.media():
+            entered.set()
+            await release.wait()
+
+    owner = asyncio.create_task(holder())
+    await entered.wait()
+    scheduler.configure(
+        queue_limit=7,
+        session_queue_limit=3,
+        wait_seconds=12,
+        chat_concurrency=2,
+        media_concurrency=2,
+        maintenance_concurrency=2,
+        media_queue_limit=5,
+        maintenance_queue_limit=4,
+    )
+    assert scheduler.queue_limit == 7
+    assert scheduler.session_limit == 3
+    assert scheduler.wait_seconds == 12
+    assert scheduler.chat_capacity == 2
+    assert scheduler.media_capacity == 2
+    assert scheduler.maintenance_capacity == 2
+    assert scheduler.media_queue_limit == 5
+    assert scheduler.maintenance_queue_limit == 4
+    release.set()
+    await owner
+    async with scheduler.media():
+        pass
+    assert not scheduler._media.locked()
+    assert scheduler.status()["media_running"] == 0
+
+
 async def _media_wait(scheduler):
     async with scheduler.media():
         return True
