@@ -13,7 +13,7 @@
   <a href="#安装与切换"><img alt="Version" src="https://img.shields.io/badge/version-0.3.4-2f6b4f?style=flat-square"></a>
   <a href="#兼容范围"><img alt="AstrBot" src="https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square"></a>
   <a href="#兼容范围"><img alt="OneBot" src="https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square"></a>
-  <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-1689%20Python%20%2B%20129%20Node-2f6b4f?style=flat-square"></a>
+  <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-1703%20Python%20%2B%20129%20Node-2f6b4f?style=flat-square"></a>
 </p>
 
 ---
@@ -179,7 +179,7 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 
 知伴 0.3.4 的验证范围：
 
-- **Python**：1,689 项测试通过（根测试 149 + 表情模块 1,540），7 项跳过，另有 125 个子测试通过（根 32 + 表情 93）。
+- **Python**：1,703 项测试通过（根测试 163 + 表情模块 1,540），7 项跳过，另有 125 个子测试通过（根 32 + 表情 93）。
 - **Node**：129 项测试通过（根桥接/前端 35 + 表情前端 94）。
 - **构建**：资源清单、ZIP 和 SHA-256 校验流程可用；具体文件数以构建产物为准。
 - **统计口径**：知伴 Token 仅计知伴可识别的 Provider 最终响应；AstrBot 全局 Token 来自只读 `provider_stats`，包含非知伴调用，两者不混算；缺 usage 显示“未统计/暂无”，不伪报 0。
@@ -189,6 +189,8 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 - **主题**：主应用浅色/深色切换即时传递到记忆成长和图片创作；两页均无独立外观入口或旧本地缓存。
 - **切换**：20 次一级入口往返后仅保留 1 个工作台 frame，无串页。
 - **加载体验**：同一模块路由复用已就绪 frame；模块 HTML 使用 30 秒、最多 12 条内存缓存；进入分组后仅预取受认证 HTML；父加载条在 iframe 插入后移除，刷新/应用/失败会使缓存失效。
+- **消息合并**：默认开启；同一会话同一发送者的连续纯文本按约 1.5 秒静默窗口合并，最长 5 秒，单批最多 8 条/2,000 字；命令、@、引用、媒体和 AngelHeart 已防抖的群聊事件不重复合并。
+- **资源预算**：聊天、媒体、后台维护默认各 1 个并发，媒体与后台共享重资源预算；模块启动/清理、TTS 合成、图片生成/编辑、音乐交付已接入。QQ 空间独立子进程与部分模块自有定时器仍需继续接入，不能据此宣称完整覆盖。
 - **安全**：密钥脱敏、版本冲突、显式清除、保存/应用状态均有回归。
 - **未执行**：真实 QQ 空间发布、真实联系人消息、付费图片/语音生成、真实资料修改。
 

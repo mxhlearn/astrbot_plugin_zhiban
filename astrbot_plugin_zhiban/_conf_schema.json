@@ -3616,9 +3616,99 @@
         ],
         "hint": "默认按预期使用频率排列，不是实测使用统计。"
       },
+      "coalesce_enabled": {
+        "type": "bool",
+        "description": "回复节奏 · 合并同一会话同一发送者的连续普通文本",
+        "default": true,
+        "hint": "仅合并纯文本；命令、@、引用、媒体和已由聊天模块防抖处理的事件不合并。"
+      },
+      "coalesce_quiet_ms": {
+        "type": "int",
+        "description": "回复节奏 · 静默合并窗口（毫秒）",
+        "default": 1500,
+        "slider": {
+          "min": 200,
+          "max": 5000
+        },
+        "hint": "收到新文本后重新计时；默认 1.5 秒。"
+      },
+      "coalesce_max_ms": {
+        "type": "int",
+        "description": "回复节奏 · 最长合并窗口（毫秒）",
+        "default": 5000,
+        "slider": {
+          "min": 1000,
+          "max": 15000
+        },
+        "hint": "持续补充也会在最长窗口到达时及时提交。"
+      },
+      "coalesce_max_messages": {
+        "type": "int",
+        "description": "回复节奏 · 单批最多合并消息（条）",
+        "default": 8,
+        "slider": {
+          "min": 2,
+          "max": 20
+        }
+      },
+      "coalesce_max_chars": {
+        "type": "int",
+        "description": "回复节奏 · 单批最多合并字符（字）",
+        "default": 2000,
+        "slider": {
+          "min": 200,
+          "max": 8000
+        }
+      },
+      "chat_concurrency": {
+        "type": "int",
+        "description": "资源调度 · 聊天并发上限（个）",
+        "default": 1,
+        "slider": {
+          "min": 1,
+          "max": 4
+        },
+        "hint": "默认 1；提高会增加同时生成回复的内存占用。"
+      },
+      "media_concurrency": {
+        "type": "int",
+        "description": "资源调度 · 媒体处理并发上限（个）",
+        "default": 1,
+        "slider": {
+          "min": 1,
+          "max": 2
+        }
+      },
+      "maintenance_concurrency": {
+        "type": "int",
+        "description": "资源调度 · 后台维护并发上限（个）",
+        "default": 1,
+        "slider": {
+          "min": 1,
+          "max": 2
+        }
+      },
+      "media_queue_limit": {
+        "type": "int",
+        "description": "高级保护 · 媒体排队上限（条）",
+        "default": 8,
+        "slider": {
+          "min": 1,
+          "max": 32
+        }
+      },
+      "maintenance_queue_limit": {
+        "type": "int",
+        "description": "高级保护 · 后台维护排队上限（条）",
+        "default": 8,
+        "slider": {
+          "min": 1,
+          "max": 32
+        }
+      },
       "queue_limit": {
         "type": "int",
-        "description": "聊天等待总数",
+        "description": "高级保护 · 全局排队消息上限（条）",
         "default": 20,
         "slider": {
           "min": 1,
@@ -3627,7 +3717,7 @@
       },
       "session_queue_limit": {
         "type": "int",
-        "description": "单会话等待数",
+        "description": "高级保护 · 单会话排队消息上限（条）",
         "default": 4,
         "slider": {
           "min": 1,
@@ -3636,7 +3726,7 @@
       },
       "wait_seconds": {
         "type": "int",
-        "description": "聊天等待上限（秒）",
+        "description": "高级保护 · 排队等待上限（秒）",
         "default": 90,
         "slider": {
           "min": 1,

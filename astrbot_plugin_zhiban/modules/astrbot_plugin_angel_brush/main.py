@@ -42,8 +42,9 @@ class AngelBrushPlugin(Star):
         logger.info(f"AngelBrush: data_dir={data_dir}")
 
         # Register LLM tools - angel_ prefix required
-        self.gen_tool = AngelImageGenerateTool(data_dir=data_dir)
-        self.edit_tool = AngelImageEditTool(data_dir=data_dir)
+        budget = getattr(getattr(context, "zhiban_parent", None), "scheduler", None)
+        self.gen_tool = AngelImageGenerateTool(data_dir=data_dir, budget=budget)
+        self.edit_tool = AngelImageEditTool(data_dir=data_dir, budget=budget)
         self.context.add_llm_tools(self.gen_tool, self.edit_tool)
         logger.info("AngelBrush: registered angel_image_generate / angel_image_edit")
 

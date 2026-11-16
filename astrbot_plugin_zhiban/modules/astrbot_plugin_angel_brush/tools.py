@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -93,6 +94,7 @@ class AngelImageGenerateTool(FunctionTool[AstrAgentContext]):
         }
     )
     data_dir: Path = field(default=None)  # type: ignore[assignment]
+    budget: object = field(default=None, repr=False)
 
     async def call(
         self, context: ContextWrapper[AstrAgentContext], **kwargs
@@ -106,10 +108,12 @@ class AngelImageGenerateTool(FunctionTool[AstrAgentContext]):
             pass
         prompt = str(kwargs.get("prompt") or "").strip()
         resolution = str(kwargs.get("resolution") or "").strip() or None
-        result = await service.generate_images(
-            self.data_dir,
-            {"prompt": prompt, "size": resolution, "operation": "generate"},
-        )
+        budget_context = self.budget.media() if self.budget is not None else nullcontext()
+        async with budget_context:
+            result = await service.generate_images(
+                self.data_dir,
+                {"prompt": prompt, "size": resolution, "operation": "generate"},
+            )
         return _tool_success_value(result, "图片已生成并保存到插件数据目录")
 
 
@@ -148,6 +152,7 @@ class AngelImageEditTool(FunctionTool[AstrAgentContext]):
         }
     )
     data_dir: Path = field(default=None)  # type: ignore[assignment]
+    budget: object = field(default=None, repr=False)
 
     async def call(
         self, context: ContextWrapper[AstrAgentContext], **kwargs
@@ -167,15 +172,17 @@ class AngelImageEditTool(FunctionTool[AstrAgentContext]):
         images = [str(x).strip() for x in images if str(x).strip()]
         resolution = str(kwargs.get("resolution") or "").strip() or None
         aspect_ratio = str(kwargs.get("aspect_ratio") or "").strip() or None
-        result = await service.generate_images(
-            self.data_dir,
-            {
-                "prompt": prompt,
-                "images": images,
-                "mask": mask,
-                "operation": "edit",
-                "resolution": resolution,
-                "aspect_ratio": aspect_ratio,
-            },
-        )
+        budget_context = self.budget.media() if self.budget is not None else nullcontext()
+        async with budget_context:
+            result = await service.generate_images(
+                self.data_dir,
+                {
+                    "prompt": prompt,
+                    "images": images,
+                    "mask": mask,
+                    "operation": "edit",
+                    "resolution": resolution,
+                    "aspect_ratio": aspect_ratio,
+                },
+            )
         return _tool_success_value(result, "图片已编辑并保存到插件数据目录")

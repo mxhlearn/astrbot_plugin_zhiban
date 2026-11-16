@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
 import random
 import re
 import time
@@ -77,6 +78,7 @@ class BreezeTTSPlugin(Star):
         self.session: aiohttp.ClientSession | None = None
         self.temp_dir = Path(getattr(context, "zhiban_data_dir", None) or (StarTools.get_data_dir("astrbot_plugin_zhiban") / "tts")) / "temp"
         self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self._budget = getattr(getattr(context, "zhiban_parent", None), "scheduler", None)
 
         # 可视化页面使用的后端 API（页面在 views/panel）
         if context is not None and hasattr(context, "register_web_api"):
@@ -150,28 +152,35 @@ class BreezeTTSPlugin(Star):
             body["voice_settings"] = {"speed": speed}
 
         url = f"{self._base()}/v1/text-to-speech/{voice_id}?output_format=wav"
-        session = await self._ensure_session()
-        async with session.post(
-            url, json=body, headers={"xi-api-key": api_key}
-        ) as response:
-            if response.status != 200:
-                detail = (await response.content.read(8192)).decode("utf-8", errors="replace")[:200]
-                raise RuntimeError(f"Breeze {response.status}: {detail}")
-            max_bytes = 8 * 1024 * 1024
-            if response.content_length and response.content_length > max_bytes:
-                raise RuntimeError("语音响应超过 8 MiB 限制")
-            audio = bytearray()
-            async for chunk in response.content.iter_chunked(64 * 1024):
-                if len(audio) + len(chunk) > max_bytes:
+        budget = getattr(self, "_budget", None)
+        if budget is None:
+            from contextlib import nullcontext
+            budget_context = nullcontext()
+        else:
+            budget_context = budget.media()
+        async with budget_context:
+            session = await self._ensure_session()
+            async with session.post(
+                url, json=body, headers={"xi-api-key": api_key}
+            ) as response:
+                if response.status != 200:
+                    detail = (await response.content.read(8192)).decode("utf-8", errors="replace")[:200]
+                    raise RuntimeError(f"Breeze {response.status}: {detail}")
+                max_bytes = 8 * 1024 * 1024
+                if response.content_length and response.content_length > max_bytes:
                     raise RuntimeError("语音响应超过 8 MiB 限制")
-                audio.extend(chunk)
-        if not audio:
-            raise RuntimeError("Breeze 返回空音频")
+                audio = bytearray()
+                async for chunk in response.content.iter_chunked(64 * 1024):
+                    if len(audio) + len(chunk) > max_bytes:
+                        raise RuntimeError("语音响应超过 8 MiB 限制")
+                    audio.extend(chunk)
+            if not audio:
+                raise RuntimeError("Breeze 返回空音频")
 
-        out = self.temp_dir / f"{int(time.time())}_{uuid.uuid4().hex[:8]}.wav"
-        out.write_bytes(audio)
-        self._cleanup()
-        return out.resolve()
+            out = self.temp_dir / f"{int(time.time())}_{uuid.uuid4().hex[:8]}.wav"
+            out.write_bytes(audio)
+            self._cleanup()
+            return out.resolve()
 
     @staticmethod
     def _make_record(path: Path, text: str):

@@ -1186,7 +1186,9 @@ function renderSchedulerSummary() {
   header.append(element("h3", "", "聊天调度"), element("span", "muted", "来自当前调度器"));
   const metrics = element("div", "mini-metrics");
   for (const [key, label] of [
-    ["running", "处理中"], ["waiting", "等待中"], ["media_running", "媒体任务"], ["rejected", "拒绝数"],
+    ["running", "聊天运行"], ["waiting", "聊天排队"], ["media_running", "媒体运行"],
+    ["media_waiting", "媒体排队"], ["maintenance_running", "后台运行"],
+    ["maintenance_waiting", "后台排队"], ["rejected", "拒绝数"],
   ]) {
     const tile = element("div", "mini-metric");
     const value = element("strong", "", "未获取");

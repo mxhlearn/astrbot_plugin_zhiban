@@ -309,3 +309,39 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ToolReloadTests(unittest.TestCase):
+    def _context(self):
+        manager = types.SimpleNamespace(func_list=[])
+        parent = types.SimpleNamespace(
+            provider_manager=types.SimpleNamespace(llm_tools=manager),
+            add_llm_tools=lambda *tools: manager.func_list.extend(tools),
+        )
+        state = types.SimpleNamespace(key="memory", tools=[], previous_tools={}, instance=None)
+        def own(state, tool):
+            tool.zhiban_module_key = state.key
+            tool.handler_module_path = "owner"
+            state.tools.append(tool)
+        context = object.__new__(runtime._ModuleContext)
+        context._context = parent
+        context._state = state
+        context._host = types.SimpleNamespace(_own_tool=own)
+        return context, manager, state
+
+    def test_same_module_reregistration_replaces_stale_tool(self):
+        context, manager, _ = self._context()
+        tool = types.SimpleNamespace(name="recall_long_term_memory", handler=None, active=True)
+        context.add_llm_tools(tool)
+        context.add_llm_tools(tool)
+        self.assertEqual([item.name for item in manager.func_list], ["recall_long_term_memory"])
+
+    def test_cross_module_tool_conflict_is_still_rejected(self):
+        context, manager, _ = self._context()
+        manager.func_list.append(types.SimpleNamespace(
+            name="recall_long_term_memory", handler=None, active=True, zhiban_module_key="other"
+        ))
+        with self.assertRaisesRegex(RuntimeError, "recall_long_term_memory"):
+            context.add_llm_tools(types.SimpleNamespace(
+                name="recall_long_term_memory", handler=None, active=True
+            ))

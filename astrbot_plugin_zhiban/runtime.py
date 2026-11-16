@@ -27,6 +27,14 @@ def _framework():
     return star_map, star_registry, star_handlers_registry, llm_tools
 
 
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def _null_async_context():
+    yield
+
+
 def _get(spec: Any, name: str, default: Any = None) -> Any:
     return spec.get(name, default) if isinstance(spec, dict) else getattr(spec, name, default)
 
@@ -288,7 +296,19 @@ class _ModuleContext:
         manager = self._context.provider_manager.llm_tools
         for tool in tools:
             old = next((item for item in manager.func_list if item.name == tool.name), None)
-            if old is not None and all(old is not owned for owned in self._state.tools):
+            if old is None:
+                continue
+            same_module = getattr(old, "zhiban_module_key", None) == self._state.key
+            if not same_module:
+                handler = getattr(old, "handler", None)
+                if isinstance(handler, functools.partial):
+                    handler = handler.func
+                owner = getattr(self._state, "instance", None)
+                same_module = owner is not None and getattr(handler, "__self__", None) is owner
+            if same_module:
+                manager.func_list.remove(old)
+                continue
+            if all(old is not owned for owned in self._state.tools):
                 if getattr(old, "active", True):
                     raise RuntimeError(f"工具名称冲突: {tool.name}")
                 self._state.previous_tools.setdefault(tool.name, old)
@@ -470,9 +490,12 @@ class ModuleHost:
             self._collect_tools(state, before_tools, before_tool_names)
             initialize = getattr(instance, "initialize", None)
             if callable(initialize):
-                result = initialize()
-                if inspect.isawaitable(result):
-                    await asyncio.wait_for(result, timeout=60)
+                budget = getattr(self.parent, "scheduler", None)
+                context = budget.maintenance() if budget is not None else _null_async_context()
+                async with context:
+                    result = initialize()
+                    if inspect.isawaitable(result):
+                        await asyncio.wait_for(result, timeout=60)
             self._bind_handlers(state, before_handlers)
             self._collect_tools(state, before_tools, before_tool_names)
             state.state = "running"
@@ -521,6 +544,7 @@ class ModuleHost:
 
     def _own_tool(self, state, tool):
         tool.handler_module_path = self.owner
+        tool.zhiban_module_key = state.key
         if all(tool is not other for other in state.tools):
             state.tools.append(tool)
 
@@ -607,9 +631,12 @@ class ModuleHost:
         terminate = getattr(state.instance, "terminate", None)
         if callable(terminate):
             try:
-                result = terminate()
-                if inspect.isawaitable(result):
-                    await asyncio.wait_for(result, timeout=20)
+                budget = getattr(self.parent, "scheduler", None)
+                context = budget.maintenance() if budget is not None else _null_async_context()
+                async with context:
+                    result = terminate()
+                    if inspect.isawaitable(result):
+                        await asyncio.wait_for(result, timeout=20)
             except Exception as exc:
                 state.error = f"{state.error + '; ' if state.error else ''}清理失败:{type(exc).__name__}"
                 self.log.error("知伴模块 %s 清理失败（%s）", state.label, type(exc).__name__)
@@ -621,7 +648,8 @@ class ModuleHost:
         state.handlers.clear()
         for manager in self._tool_managers(global_tools):
             manager.func_list[:] = [tool for tool in manager.func_list
-                                   if all(tool is not owned for owned in state.tools)]
+                                   if all(tool is not owned for owned in state.tools)
+                                   and getattr(tool, "zhiban_module_key", None) != state.key]
             for name, old in state.previous_tools.items():
                 if not any(tool.name == name for tool in manager.func_list):
                     manager.func_list.append(old)

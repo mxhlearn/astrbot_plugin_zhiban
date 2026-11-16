@@ -91,3 +91,68 @@ async def test_close_rejects_and_clears_waiters():
     gate.set()
     await owner
     assert not await scheduler.admit_pipeline(Event("last"))
+
+@pytest.mark.asyncio
+async def test_media_queue_limit_and_heavy_budget_serialize_maintenance():
+    scheduler = BudgetScheduler(media_queue_limit=1, maintenance_queue_limit=1, wait_seconds=5)
+    media_entered = asyncio.Event()
+    media_release = asyncio.Event()
+    maintenance_entered = asyncio.Event()
+
+    async def media_holder():
+        async with scheduler.media():
+            media_entered.set()
+            await media_release.wait()
+
+    async def media_waiter():
+        async with scheduler.media():
+            return True
+
+    async def maintenance_waiter():
+        async with scheduler.maintenance():
+            maintenance_entered.set()
+
+    owner = asyncio.create_task(media_holder())
+    await media_entered.wait()
+    extra_media = asyncio.create_task(media_waiter())
+    maintenance = asyncio.create_task(maintenance_waiter())
+    await asyncio.sleep(0.02)
+    assert not maintenance_entered.is_set()
+    with pytest.raises(RuntimeError):
+        async with scheduler.media():
+            pass
+    media_release.set()
+    await owner
+    await extra_media
+    await maintenance
+    assert maintenance_entered.is_set()
+    assert scheduler.status()["media_running"] == 0
+    assert scheduler.status()["maintenance_running"] == 0
+    assert scheduler.status()["heavy_running"] == 0
+
+
+@pytest.mark.asyncio
+async def test_close_cancels_resource_waiter():
+    scheduler = BudgetScheduler(media_queue_limit=2, wait_seconds=10)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def holder():
+        async with scheduler.media():
+            entered.set()
+            await release.wait()
+
+    owner = asyncio.create_task(holder())
+    await entered.wait()
+    waiter = asyncio.create_task(_media_wait(scheduler))
+    await asyncio.sleep(0.02)
+    await scheduler.close()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+    release.set()
+    await owner
+
+
+async def _media_wait(scheduler):
+    async with scheduler.media():
+        return True

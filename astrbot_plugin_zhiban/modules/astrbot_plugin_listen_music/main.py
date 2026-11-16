@@ -436,6 +436,13 @@ class ListenMusicPlugin(Star):
         self._llm_searches: dict[str, _LlmSearch] = {}
         self._selection_lock = asyncio.Lock()
         self._initialized = False
+        self._budget = getattr(getattr(context, "zhiban_parent", None), "scheduler", None)
+
+    def _media_context(self):
+        if self._budget is None:
+            from contextlib import nullcontext
+            return nullcontext()
+        return self._budget.media()
 
     async def initialize(self) -> None:
         if self._initialized:
@@ -725,11 +732,15 @@ class ListenMusicPlugin(Star):
     ) -> None:
         """Overlap a user-visible preface with preparation of the selected media."""
 
+        async def _deliver_with_budget():
+            async with self._media_context():
+                return await self._require_delivery().deliver(
+                    candidate,
+                    limits=_media_limits_for(action),
+                )
+
         preparation = asyncio.create_task(
-            self._require_delivery().deliver(
-                candidate,
-                limits=_media_limits_for(action),
-            ),
+            _deliver_with_budget(),
             name=f"listen-music-delivery-{candidate.candidate_id}",
         )
         handed_to_sender = False
@@ -867,10 +878,11 @@ class ListenMusicPlugin(Star):
                 )
                 stop_wait = False
                 return
-            result = await self._require_delivery().deliver(
-                candidate,
-                limits=_media_limits_for(action),
-            )
+            async with self._media_context():
+                result = await self._require_delivery().deliver(
+                    candidate,
+                    limits=_media_limits_for(action),
+                )
             await self._send_delivery(reply, result, action)
         except (DeliveryError, FfmpegUnavailableError, MediaError) as exc:
             await reply.send(reply.plain_result(str(exc)))

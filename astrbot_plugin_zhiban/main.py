@@ -15,6 +15,7 @@ from astrbot.api.star import Context, Star, StarTools
 from astrbot.api.web import request as plugin_request
 
 from .catalog import MODULES, ordered_modules
+from .coalescing import MessageCoalescer
 from .scheduling import BudgetScheduler
 from .ui_assets import MODULE_UI_ROOTS, resolve_module_ui_asset
 from .module_api import module_api_target
@@ -44,6 +45,17 @@ class ZhibanPlugin(Star):
             management.get("queue_limit", 20),
             management.get("session_queue_limit", 4),
             management.get("wait_seconds", 90),
+            chat_concurrency=management.get("chat_concurrency", 1),
+            media_concurrency=management.get("media_concurrency", 1),
+            maintenance_concurrency=management.get("maintenance_concurrency", 1),
+            media_queue_limit=management.get("media_queue_limit", 8),
+            maintenance_queue_limit=management.get("maintenance_queue_limit", 8),
+        )
+        self.coalescer = MessageCoalescer(
+            quiet_seconds=management.get("coalesce_quiet_ms", 1500) / 1000,
+            max_seconds=management.get("coalesce_max_ms", 5000) / 1000,
+            max_messages=management.get("coalesce_max_messages", 8),
+            max_chars=management.get("coalesce_max_chars", 2000),
         )
         self.host = None
         self.persona = None
@@ -192,6 +204,7 @@ class ZhibanPlugin(Star):
             "schema": management_schema,
             "revision": snapshot["revision"],
             "scheduler": self.scheduler.status(),
+            **({"coalescing": self.coalescer.status()} if getattr(self, "coalescer", None) is not None else {}),
             "modules": module_rows,
         }
 
@@ -470,6 +483,7 @@ class ZhibanPlugin(Star):
                 "modules": modules,
                 "menu_order": [item["key"] for item in ordered_modules(menu_order)],
                 "scheduler": self.scheduler.status(),
+                **({"coalescing": self.coalescer.status()} if getattr(self, "coalescer", None) is not None else {}),
             },
         }
 
@@ -701,8 +715,64 @@ class ZhibanPlugin(Star):
             headers["Cache-Control"] = "no-store, max-age=0"
         return FileResponse(path, headers=headers)
 
+    def _coalesce_key(self, event: AstrMessageEvent) -> str:
+        try:
+            sender = str(event.get_sender_id() or "")
+        except Exception:
+            sender = ""
+        return f"{event.unified_msg_origin}|{sender}"
+
+    def _coalesce_eligible(self, event: AstrMessageEvent) -> bool:
+        management = self.config.get("management", {})
+        if not management.get("coalesce_enabled", True):
+            return False
+        try:
+            if not event.is_private_chat() and event.get_extra("angelheart_debounce_kind"):
+                return False
+        except Exception:
+            pass
+        text = str(getattr(event, "message_str", "") or "").strip()
+        if not text or text[0] in "/!#." or text.startswith("知伴"):
+            return False
+        try:
+            if not event.is_private_chat() and getattr(event, "is_at_or_wake_command", False):
+                return False
+            chain = getattr(event.message_obj, "message", None) or []
+            from astrbot.core.message.components import Plain
+            if not chain or any(not isinstance(component, Plain) for component in chain):
+                return False
+        except Exception:
+            return False
+        return True
+
+    def _apply_coalesced_text(self, event: AstrMessageEvent, merged: str, ids: list[str]) -> None:
+        original = str(getattr(event, "message_str", "") or "")
+        if not merged or merged == original:
+            return
+        event.message_str = merged
+        try:
+            from astrbot.core.message.components import Plain
+            event.message_obj.message = [Plain(merged)]
+        except Exception:
+            pass
+        try:
+            event.set_extra("_zhiban_coalesced_count", len(ids))
+            event.set_extra("_zhiban_coalesced_ids", ids[-8:])
+        except Exception:
+            pass
+
     @filter.on_waiting_llm_request(priority=1000000)
     async def admit(self, event: AstrMessageEvent):
+        if self._coalesce_eligible(event):
+            leader, merged, ids = await self.coalescer.join(
+                self._coalesce_key(event),
+                str(getattr(event, "message_str", "") or ""),
+                str(getattr(getattr(event, "message_obj", None), "message_id", "") or ""),
+            )
+            if not leader:
+                event.stop_event()
+                return
+            self._apply_coalesced_text(event, merged, ids)
         admitted = await self.scheduler.admit_pipeline(event)
         if admitted:
             try:
@@ -766,7 +836,7 @@ class ZhibanPlugin(Star):
             event.stop_event()
             return
         if action == "状态":
-            report = {"调度": self.scheduler.status(), "模块": self.host.status() if self.host else {}}
+            report = {"调度": self.scheduler.status(), "消息合并": self.coalescer.status(), "模块": self.host.status() if self.host else {}}
             yield event.plain_result(json.dumps(report, ensure_ascii=False, indent=2))
         elif action in ("人格建议", "批准", "拒绝", "回滚"):
             if self.persona is None:
@@ -792,6 +862,7 @@ class ZhibanPlugin(Star):
         event.stop_event()
 
     async def terminate(self):
+        await self.coalescer.close()
         await self.scheduler.close()
         if self.host is not None:
             await self.host.close()
