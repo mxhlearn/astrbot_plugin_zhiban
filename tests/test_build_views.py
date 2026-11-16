@@ -148,9 +148,11 @@ class BuildViewsTests(unittest.TestCase):
             (root / "astrbot_plugin_zhiban" / "README.md").read_text(encoding="utf-8"),
         )
         for source in readmes:
-            self.assertIn("本项目在开发过程中使用 AI 工具辅助编码、测试与文档整理", source)
-            self.assertNotIn("GPT-6 Astra", source)
-            self.assertNotIn("DeepSeek V4.1 Flash", source)
+            self.assertIn("GPT-6 Astra", source)
+            self.assertIn("导航/配置/统计等跨模块架构与复杂调用链审阅", source)
+            self.assertIn("DeepSeek V4.1 Flash", source)
+            self.assertIn("连续消息合并、缓存与调度实现", source)
+            self.assertIn("AstrBot 运行时使用部署者自行配置的 Provider，与上述 AI 开发工具相互独立", source)
             self.assertIn("OneBot v11", source)
             for repo in (
                 "astrbot_plugin_angel_heart",
