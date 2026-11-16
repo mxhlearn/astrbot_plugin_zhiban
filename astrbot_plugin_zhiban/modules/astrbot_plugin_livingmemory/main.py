@@ -111,8 +111,11 @@ class LivingMemoryPlugin(Star):
         # 初始化后端 i18n
         i18n_init(config.get("bot_language", "zh"))
 
-        # 初始化插件初始化器
-        self.initializer = PluginInitializer(context, self.config_manager, data_dir)
+        # 初始化插件初始化器；从知伴宿主继承维护预算，独立安装时保持兼容
+        budget = getattr(getattr(context, "zhiban_parent", None), "scheduler", None)
+        self.initializer = PluginInitializer(
+            context, self.config_manager, data_dir, budget=budget
+        )
 
         # 事件处理器和命令处理器（初始化后创建）
         self.event_handler: EventHandler | None = None

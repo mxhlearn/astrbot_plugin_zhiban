@@ -462,6 +462,11 @@ class ModuleHost:
         before_tool_names = {t.name: t for t in before_tools.values()}
         before_modules = set(sys.modules)
         try:
+            # A previous instance may have imported a module before the host
+            # started tracking it. Drop every stale child-module entry before
+            # importing main so reload cannot bind old handlers or old page APIs.
+            self._evict_stale_namespace_modules(state)
+            before_modules = set(sys.modules)
             module = importlib.import_module(state.prefix + ".main")
             metadata = star_map.get(module.__name__)
             cls = getattr(metadata, "star_cls_type", None)
@@ -664,10 +669,18 @@ class ModuleHost:
         state.routes.clear()
         self._remove_child_metadata(state)
 
+    def _evict_stale_namespace_modules(self, state):
+        """Evict every module in a child namespace, including untracked imports."""
+        names = {
+            name
+            for name in sys.modules
+            if name == state.prefix or name.startswith(state.prefix + ".")
+        }
+        for name in sorted(names, key=lambda value: value.count("."), reverse=True):
+            sys.modules.pop(name, None)
+
     def _evict_modules(self, state):
-        for name, module in reversed(tuple(state.imported.items())):
-            if sys.modules.get(name) is module:
-                sys.modules.pop(name, None)
+        self._evict_stale_namespace_modules(state)
         state.imported.clear()
 
     async def close(self):

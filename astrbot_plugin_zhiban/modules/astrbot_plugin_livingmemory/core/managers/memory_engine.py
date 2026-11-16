@@ -96,6 +96,7 @@ class MemoryEngine(
         llm_provider=None,
         config: dict[str, Any] | None = None,
         rerank_provider_resolver: Callable[[], Any] | None = None,
+        budget: Any | None = None,
     ):
         """
         初始化记忆引擎
@@ -122,6 +123,7 @@ class MemoryEngine(
         self.llm_provider = llm_provider
         self.config = config or {}
         self.rerank_provider_resolver = rerank_provider_resolver
+        self._budget = budget
         self.graph_enabled = bool(self.config.get("graph_memory_enabled", False))
         self.atom_enabled = bool(
             self.config.get(
@@ -227,7 +229,7 @@ class MemoryEngine(
 
             if self.atom_enabled:
                 self.atom_lifecycle_manager = AtomLifecycleManager(
-                    self.atom_store, self.config
+                    self.atom_store, self.config, budget=self._budget
                 )
                 self.atom_retriever = AtomRetriever(self.atom_store, self.config)
                 await self.atom_lifecycle_manager.start()

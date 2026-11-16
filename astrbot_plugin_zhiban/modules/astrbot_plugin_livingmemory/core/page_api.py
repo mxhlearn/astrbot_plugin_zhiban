@@ -197,12 +197,62 @@ class PluginPageApi:
     # ==================== 路由处理方法 ====================
     # 所有方法都委托给相应的处理器
 
+    def _background_status(self) -> dict[str, Any]:
+        """Return a secret-free initialization snapshot for the system page."""
+        initializer = getattr(self.plugin, "initializer", None)
+        if initializer is None:
+            return {
+                "ready": False,
+                "state": "unavailable",
+                "message": "后台初始化不可用",
+                "embedding_ready": False,
+                "llm_ready": False,
+            }
+        embedding_ready = bool(getattr(initializer, "embedding_provider", None))
+        llm_ready = bool(getattr(initializer, "llm_provider", None))
+        failed = bool(getattr(initializer, "_initialization_failed", False))
+        timeout = failed and not (embedding_ready and llm_ready)
+        attempts = max(0, int(getattr(initializer, "_provider_check_attempts", 0) or 0))
+        if timeout:
+            state = "not_ready"
+            missing = []
+            if not embedding_ready:
+                missing.append("Embedding Provider")
+            if not llm_ready:
+                missing.append("LLM Provider")
+            message = (
+                f"后台未就绪：{'、'.join(missing) or '初始化超时'}"
+                f"（已尝试 {attempts} 次）"
+            )
+        elif embedding_ready and llm_ready:
+            state = "ready"
+            message = "后台组件已就绪"
+        else:
+            state = "partial"
+            missing = []
+            if not embedding_ready:
+                missing.append("Embedding Provider")
+            if not llm_ready:
+                missing.append("LLM Provider")
+            message = f"后台初始化中：{'、'.join(missing)}尚未就绪"
+        return {
+            "ready": bool(state == "ready"),
+            "state": state,
+            "message": message,
+            "embedding_ready": embedding_ready,
+            "llm_ready": llm_ready,
+            "attempts": attempts,
+        }
+
     async def get_stats(self):
         """获取插件统计信息"""
         ready, error = await self._ensure_plugin_ready()
         if error:
             return error
-        return await self.stats_handler.get_stats(ready["memory_engine"])
+        result = await self.stats_handler.get_stats(ready["memory_engine"])
+        if isinstance(result, dict) and isinstance(result.get("data"), dict):
+            result["data"]["background_status"] = self._background_status()
+        return result
 
     async def list_memories(self):
         """获取记忆列表（带分页和过滤）"""

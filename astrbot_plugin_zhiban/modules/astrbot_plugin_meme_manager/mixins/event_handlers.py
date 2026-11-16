@@ -1861,14 +1861,26 @@ class EventHandlerMixin:
                 {"pack_id": pack_id, "pack_dir": get_pack_paths(pack_id)["pack_dir"]}
                 for pack_id in pack_ids
             ]
-            result = await search_memes_multi_pack(
-                pack_contexts,
-                PLUGIN_DATA_DIR,
-                query,
-                self._resolve_embedding_provider,
-                top_k=self.semantic_top_k,
-                min_score=self.semantic_min_score,
-            )
+            semantic_manager = getattr(self, "semantic_task_manager", None)
+            if semantic_manager is None:
+                result = await search_memes_multi_pack(
+                    pack_contexts,
+                    PLUGIN_DATA_DIR,
+                    query,
+                    self._resolve_embedding_provider,
+                    top_k=self.semantic_top_k,
+                    min_score=self.semantic_min_score,
+                )
+            else:
+                async with semantic_manager.semantic_work():
+                    result = await search_memes_multi_pack(
+                        pack_contexts,
+                        PLUGIN_DATA_DIR,
+                        query,
+                        self._resolve_embedding_provider,
+                        top_k=self.semantic_top_k,
+                        min_score=self.semantic_min_score,
+                    )
             candidates = result.get("candidates") or []
             records = candidate_records_multi_pack(pack_contexts, candidates)
             remember_candidates(event, records)

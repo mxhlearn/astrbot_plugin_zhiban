@@ -153,6 +153,7 @@ class BuildViewsTests(unittest.TestCase):
             self.assertIn("DeepSeek V4.1 Flash", source)
             self.assertIn("连续消息合并、缓存与调度实现", source)
             self.assertIn("AstrBot 运行时使用部署者自行配置的 Provider，与上述 AI 开发工具相互独立", source)
+            self.assertIn("2,911 项测试通过（根测试 170 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187）", source)
             self.assertIn("OneBot v11", source)
             for repo in (
                 "astrbot_plugin_angel_heart",

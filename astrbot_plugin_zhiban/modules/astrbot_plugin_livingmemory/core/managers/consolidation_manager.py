@@ -16,10 +16,11 @@ from astrbot.api import logger
 class MemoryConsolidationManager:
     """按配置定期整合记忆库。"""
 
-    def __init__(self, memory_engine, memory_processor, config_manager):
+    def __init__(self, memory_engine, memory_processor, config_manager, budget=None):
         self.memory_engine = memory_engine
         self.memory_processor = memory_processor
         self.config_manager = config_manager
+        self._budget = budget
         # reflection 触发模式下的最小运行间隔（秒），避免每条消息都触发
         self._last_run_at = 0.0
         self._min_run_interval = 6 * 3600.0
@@ -57,6 +58,13 @@ class MemoryConsolidationManager:
             return {"skipped": True, "reason": "cooldown"}
         self._last_run_at = now
 
+        if self._budget is None:
+            return await self._run_consolidation_impl(cfg)
+        async with self._budget.maintenance():
+            return await self._run_consolidation_impl(cfg)
+
+    async def _run_consolidation_impl(self, cfg: dict[str, Any]) -> dict[str, Any]:
+        """Run one real consolidation pass under the caller-held budget."""
         try:
             candidates = await self._query_candidates(cfg)
             if not candidates:

@@ -3,6 +3,7 @@ PluginInitializer 的 InitializerFinalizeMixin 拆分模块
 自动从 core/plugin_initializer.py 拆分，保持行为不变
 """
 
+from contextlib import asynccontextmanager
 from typing import Any
 import asyncio
 from .managers.conversation_manager import ConversationManager
@@ -76,7 +77,9 @@ class InitializerFinalizeMixin:
             self._index_persisters = []
             for vec_db in (self.db, self.graph_db):
                 storage = getattr(vec_db, "embedding_storage", None)
-                persister = install_async_persist(storage)
+                persister = install_async_persist(
+                    storage, budget=getattr(self, "budget", None)
+                )
                 if persister is not None:
                     self._index_persisters.append(persister)
 
@@ -261,6 +264,10 @@ class InitializerFinalizeMixin:
                 config=memory_engine_config,
                 rerank_provider_resolver=resolve_rerank_provider,
             )
+            # Keep compatibility with older/custom MemoryEngine implementations:
+            # inject the optional budget only after construction.
+            if hasattr(self.memory_engine, "_budget"):
+                self.memory_engine._budget = getattr(self, "budget", None)
             await self.memory_engine.initialize()
             logger.info("MemoryEngine 已初始化")
 
@@ -310,6 +317,7 @@ class InitializerFinalizeMixin:
                 self.memory_engine,
                 self.memory_processor,
                 self.config_manager,
+                budget=getattr(self, "budget", None),
             )
 
             # 初始化索引验证器并自动重建索引
@@ -353,6 +361,7 @@ class InitializerFinalizeMixin:
                     backup_enabled=backup_enabled,
                     backup_keep_days=backup_keep_days,
                     consolidation_manager=self.consolidation_manager,
+                    budget=getattr(self, "budget", None),
                 )
                 await scheduler.start()
                 self.decay_scheduler = scheduler
@@ -475,70 +484,20 @@ class InitializerFinalizeMixin:
         if exception:
             logger.error(f"索引维护任务异常退出: {exception}", exc_info=exception)
 
+    @asynccontextmanager
+    async def _index_maintenance_scope(self):
+        """只围绕真实索引检查/修复取票，状态记录在票外完成。"""
+        budget = getattr(self, "budget", None)
+        if budget is None:
+            yield
+            return
+        async with budget.maintenance():
+            yield
+
     async def _run_index_maintenance(self) -> None:
         """Check and repair indexes while the plugin remains available."""
         try:
-            if not self.index_validator or not self.memory_engine:
-                return
-
-            fingerprint_changed = False
-            check_fingerprint = getattr(
-                self.index_validator, "provider_fingerprint_changed", None
-            )
-            if callable(check_fingerprint):
-                fingerprint_changed = bool(await check_fingerprint())
-            if fingerprint_changed:
-                status = await self.index_validator.check_consistency()
-                await self._run_scheduled_index_rebuild(
-                    "Embedding Provider 指纹已变化",
-                    status.documents_count,
-                    force_full_vector=True,
-                    rebuild_graph=True,
-                )
-                return
-
-            # 检查v1迁移状态
-            (
-                needs_migration_rebuild,
-                pending_count,
-            ) = await self.index_validator.get_migration_status()
-
-            if needs_migration_rebuild:
-                reason = f"v1 迁移数据需要重建索引（{pending_count} 条文档）"
-                await self._run_scheduled_index_rebuild(reason, pending_count)
-                return
-
-            # 检查索引一致性
-            status = await self.index_validator.check_consistency()
-
-            if not status.is_consistent and status.needs_rebuild:
-                logger.warning(f"检测到索引不一致: {status.reason}")
-                await self._run_scheduled_index_rebuild(
-                    status.reason, status.documents_count
-                )
-            else:
-                logger.info(f"索引一致性检查通过: {status.reason}")
-                graph_result = None
-                if self._graph_index_requires_rebuild:
-                    graph_result = await self._run_graph_index_rebuild()
-                self._set_index_maintenance_status(
-                    state="ready",
-                    reason=status.reason,
-                    current=status.documents_count,
-                    total=status.documents_count,
-                    message=(
-                        "索引一致性检查通过，图谱索引已重建"
-                        if graph_result is not None
-                        else "索引一致性检查通过"
-                    ),
-                    finished_at=time.time(),
-                    result=(
-                        {"success": True, "graph_rebuild": graph_result}
-                        if graph_result is not None
-                        else None
-                    ),
-                )
-
+            ready_status = await self._run_index_maintenance_impl()
         except asyncio.CancelledError:
             self._set_index_maintenance_status(
                 state="cancelled",
@@ -552,8 +511,72 @@ class InitializerFinalizeMixin:
                 state="failed",
                 message=str(e),
                 finished_at=time.time(),
-                result={"success": False, "error": str(e)},
             )
+            return
+        if ready_status is not None:
+            self._set_index_maintenance_status(
+                state="ready",
+                finished_at=time.time(),
+                **ready_status,
+            )
+
+    async def _run_index_maintenance_impl(self) -> None:
+        if not self.index_validator or not self.memory_engine:
+            return None
+
+        fingerprint_changed = False
+        check_fingerprint = getattr(
+            self.index_validator, "provider_fingerprint_changed", None
+        )
+        if callable(check_fingerprint):
+            fingerprint_changed = bool(await check_fingerprint())
+        if fingerprint_changed:
+            status = await self.index_validator.check_consistency()
+            await self._run_scheduled_index_rebuild(
+                "Embedding Provider 指纹已变化",
+                status.documents_count,
+                force_full_vector=True,
+                rebuild_graph=True,
+            )
+            return None
+
+        # 检查 v1 迁移状态。
+        needs_migration_rebuild, pending_count = (
+            await self.index_validator.get_migration_status()
+        )
+        if needs_migration_rebuild:
+            reason = f"v1 迁移数据需要重建索引（{pending_count} 条文档）"
+            await self._run_scheduled_index_rebuild(reason, pending_count)
+            return None
+
+        status = await self.index_validator.check_consistency()
+        if not status.is_consistent and status.needs_rebuild:
+            logger.warning(f"检测到索引不一致: {status.reason}")
+            await self._run_scheduled_index_rebuild(
+                status.reason, status.documents_count
+            )
+            return None
+
+        logger.info(f"索引一致性检查通过: {status.reason}")
+        graph_result = None
+        if self._graph_index_requires_rebuild:
+            graph_result = await self._run_graph_index_rebuild()
+        return {
+            "reason": status.reason,
+            "current": status.documents_count,
+            "total": status.documents_count,
+            "message": (
+                "索引一致性检查通过，图谱索引已重建"
+                if graph_result is not None
+                else "索引一致性检查通过"
+            ),
+            "result": (
+                {"success": True, "graph_rebuild": graph_result}
+                if graph_result is not None
+                else None
+            ),
+        }
+
 
     async def _run_scheduled_index_rebuild(
         self,
@@ -585,43 +608,47 @@ class InitializerFinalizeMixin:
         rebuild_kwargs: dict[str, Any] = {"progress_callback": update_progress}
         if force_full_vector:
             rebuild_kwargs["force_full_vector"] = True
-        result = await self.index_validator.rebuild_indexes(
-            self.memory_engine, **rebuild_kwargs
-        )
-        success = bool(result.get("success"))
-        partial = bool(result.get("partial"))
 
-        check_consistency = getattr(self.index_validator, "check_consistency", None)
-        if success and callable(check_consistency):
-            final_status = await check_consistency()
-            if not final_status.is_consistent and final_status.needs_rebuild:
-                logger.info(
-                    "索引维护期间检测到并发写入，执行一次收尾补偿: "
-                    f"{final_status.reason}"
-                )
-                reconciliation = await self.index_validator.rebuild_indexes(
-                    self.memory_engine,
-                    progress_callback=update_progress,
-                )
-                result["reconciliation"] = dict(reconciliation)
-                success = bool(reconciliation.get("success"))
-                partial = partial or bool(reconciliation.get("partial"))
-                if success:
-                    final_status = await check_consistency()
+        async with self._index_maintenance_scope():
+            result = await self.index_validator.rebuild_indexes(
+                self.memory_engine, **rebuild_kwargs
+            )
+            success = bool(result.get("success"))
+            partial = bool(result.get("partial"))
 
-            if success and not final_status.is_consistent:
-                partial = True
-                result["post_check"] = {
-                    "consistent": False,
-                    "reason": final_status.reason,
-                }
+            check_consistency = getattr(
+                self.index_validator, "check_consistency", None
+            )
+            if success and callable(check_consistency):
+                final_status = await check_consistency()
+                if not final_status.is_consistent and final_status.needs_rebuild:
+                    logger.info(
+                        "索引维护期间检测到并发写入，执行一次收尾补偿: "
+                        f"{final_status.reason}"
+                    )
+                    reconciliation = await self.index_validator.rebuild_indexes(
+                        self.memory_engine,
+                        progress_callback=update_progress,
+                    )
+                    result["reconciliation"] = dict(reconciliation)
+                    success = bool(reconciliation.get("success"))
+                    partial = partial or bool(reconciliation.get("partial"))
+                    if success:
+                        final_status = await check_consistency()
 
-        if (
-            success
-            and not partial
-            and (rebuild_graph or self._graph_index_requires_rebuild)
-        ):
-            result["graph_rebuild"] = await self._run_graph_index_rebuild()
+                if success and not final_status.is_consistent:
+                    partial = True
+                    result["post_check"] = {
+                        "consistent": False,
+                        "reason": final_status.reason,
+                    }
+
+            if (
+                success
+                and not partial
+                and (rebuild_graph or self._graph_index_requires_rebuild)
+            ):
+                result["graph_rebuild"] = await self._run_graph_index_rebuild()
 
         result["success"] = success
         result["partial"] = partial

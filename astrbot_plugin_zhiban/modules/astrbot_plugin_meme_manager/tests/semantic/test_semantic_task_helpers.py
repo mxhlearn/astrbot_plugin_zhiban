@@ -452,3 +452,64 @@ async def test_rebuild_preserves_paused_or_interrupted_queue(manager, tmp_path, 
     assert manager._load_state("pack") == state
     assert not manager._index_tasks
     provider.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_maintenance_scope_uses_real_reentrant_parent_budget(manager):
+    from importlib.util import module_from_spec, spec_from_file_location
+    from pathlib import Path
+
+    scheduling_path = Path(__file__).parents[5] / "astrbot_plugin_zhiban" / "scheduling.py"
+    spec = spec_from_file_location("meme_budget_scheduling", scheduling_path)
+    scheduling = module_from_spec(spec)
+    spec.loader.exec_module(scheduling)
+    budget = scheduling.BudgetScheduler()
+    manager.context = SimpleNamespace(
+        zhiban_parent=SimpleNamespace(scheduler=budget)
+    )
+
+    async with manager._maintenance_scope():
+        async with manager._maintenance_scope():
+            assert budget.status()["maintenance_running"] == 1
+            assert budget.status()["heavy_running"] == 1
+
+    assert budget.status()["maintenance_running"] == 0
+    assert budget.status()["heavy_running"] == 0
+
+
+@pytest.mark.asyncio
+async def test_external_pack_operation_releases_budget_when_cancelled(manager):
+    from contextlib import asynccontextmanager
+    from unittest.mock import Mock
+
+    events = []
+
+    class Budget:
+        @asynccontextmanager
+        async def maintenance(self):
+            events.append("enter")
+            try:
+                yield
+            finally:
+                events.append("exit")
+
+    manager.context = SimpleNamespace(
+        zhiban_parent=SimpleNamespace(scheduler=Budget())
+    )
+    manager.begin_external_pack_operation = Mock(side_effect=lambda pack_id, op: events.append("begin"))
+    manager.end_external_pack_operation = Mock(side_effect=lambda pack_id: events.append("end"))
+
+    started = asyncio.Event()
+
+    async def consume():
+        async with manager.external_pack_operation("pack-a", "review"):
+            started.set()
+            await asyncio.Event().wait()
+
+    task = asyncio.create_task(consume())
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert events == ["begin", "enter", "exit", "end"]

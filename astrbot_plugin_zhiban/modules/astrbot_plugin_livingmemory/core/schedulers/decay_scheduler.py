@@ -6,9 +6,10 @@
 import asyncio
 import json
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from astrbot.api import logger
 
@@ -39,6 +40,7 @@ class DecayScheduler:
         backup_enabled: bool = True,
         backup_keep_days: int = 7,
         consolidation_manager=None,
+        budget: Any | None = None,
     ):
         """
         初始化衰减调度器
@@ -53,6 +55,7 @@ class DecayScheduler:
             backup_enabled: 是否启用每日自动备份
             backup_keep_days: 备份保留天数，超期自动删除
             consolidation_manager: 记忆整合管理器（用于每日整合触发）
+            budget: 宿主预算调度器；只在真实维护区间取票
         """
         self.memory_engine = memory_engine
         self.decay_rate = decay_rate
@@ -63,6 +66,7 @@ class DecayScheduler:
         self.backup_enabled = backup_enabled
         self.backup_keep_days = backup_keep_days
         self.consolidation_manager = consolidation_manager
+        self._budget = budget
 
         self._state_file = self.data_dir / "decay_state.json"
         self._task: asyncio.Task | None = None
@@ -137,16 +141,22 @@ class DecayScheduler:
         except ValueError:
             return 0
 
+    @asynccontextmanager
+    async def _maintenance_scope(self):
+        """只在真实衰减/备份/维护区间占用宿主维护预算。"""
+        if self._budget is None:
+            yield
+            return
+        async with self._budget.maintenance():
+            yield
+
     async def _execute_decay(self, days: int = 1) -> bool:
-        """
-        执行衰减操作
+        """执行衰减操作，并在真实维护区间持有宿主预算。"""
+        async with self._maintenance_scope():
+            return await self._execute_decay_impl(days)
 
-        Args:
-            days: 衰减天数（用于补偿错过的天数）
-
-        Returns:
-            是否执行成功
-        """
+    async def _execute_decay_impl(self, days: int = 1) -> bool:
+        """执行单次衰减、备份与存储维护。"""
         try:
             if self.decay_rate > 0:
                 affected = await self.memory_engine.apply_daily_decay(

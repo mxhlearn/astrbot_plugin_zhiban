@@ -277,6 +277,21 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, [19])
         await host.close()
 
+    async def test_reload_module_evicts_untracked_stale_child_modules(self):
+        host = self.host()
+        await host.start()
+        stale_name = "testzhiban.modules.astrbot_plugin_fake.stale"
+        stale = types.ModuleType(stale_name)
+        sys.modules[stale_name] = stale
+        state = next(item for item in host._states.values() if item.key == "chat")
+        self.assertNotIn(stale_name, state.imported)
+
+        await host.reload_module("chat")
+
+        self.assertIsNot(sys.modules.get(stale_name), stale)
+        self.assertEqual(self.imports, 2)
+        await host.close()
+
     async def test_reload_module_disables_and_reenables_cleanly(self):
         host = self.host()
         await host.start()

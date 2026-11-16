@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import tempfile
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -113,6 +114,37 @@ class SemanticTaskManager:
         self._external_pack_operations: dict[str, str] = {}
         self._pause_events: dict[str, asyncio.Event] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+
+    @asynccontextmanager
+    async def _maintenance_scope(self):
+        """在真实重任务区间使用父级预算；依赖调度器按任务可重入。"""
+        budget = getattr(
+            getattr(getattr(self, "context", None), "zhiban_parent", None),
+            "scheduler",
+            None,
+        )
+        if budget is None:
+            yield
+            return
+        async with budget.maintenance():
+            yield
+
+    @asynccontextmanager
+    async def external_pack_operation(self, pack_id: str, operation: str):
+        """包装外部图包写操作，并在真实处理区间共享维护预算。"""
+        pack_id = self._validate_pack_id(pack_id)
+        self.begin_external_pack_operation(pack_id, operation)
+        try:
+            async with self._maintenance_scope():
+                yield
+        finally:
+            self.end_external_pack_operation(pack_id)
+
+    @asynccontextmanager
+    async def semantic_work(self):
+        """给语义查询等真实重工作提供共享、可重入的维护票。"""
+        async with self._maintenance_scope():
+            yield
 
     async def close(self) -> None:
         """插件卸载时取消后台任务；每张图片的状态已在处理前后持久化。"""
@@ -334,14 +366,15 @@ class SemanticTaskManager:
                     return result
 
                 try:
-                    manifest = await build_index(
-                        pack_dir,
-                        self.plugin_data_dir,
-                        pack_id,
-                        embedding,
-                        force=False,
-                        target_entry_ids={detail["entry_id"]},
-                    )
+                    async with self._maintenance_scope():
+                        manifest = await build_index(
+                            pack_dir,
+                            self.plugin_data_dir,
+                            pack_id,
+                            embedding,
+                            force=False,
+                            target_entry_ids={detail["entry_id"]},
+                        )
                 except Exception as exc:
                     latest_detail = get_image_semantic_detail(
                         pack_dir,
@@ -531,7 +564,8 @@ class SemanticTaskManager:
             raise TypeError("mutation 必须可调用")
         async with self._lock(pack_id):
             self.assert_pack_mutation_allowed(pack_id, operation)
-            return await self._run_blocking(mutation)
+            async with self._maintenance_scope():
+                return await self._run_blocking(mutation)
 
     @staticmethod
     async def _run_blocking(function: Any, *args: Any, **kwargs: Any) -> Any:
@@ -883,9 +917,10 @@ class SemanticTaskManager:
         ):
             return selection
         try:
-            vector = await embedding.embed(
-                "AstrBot 表情包向量维度校验", use_cache=False
-            )
+            async with self._maintenance_scope():
+                vector = await embedding.embed(
+                    "AstrBot 表情包向量维度校验", use_cache=False
+                )
             selection.update(
                 {
                     "dimension_verified": True,
@@ -1683,14 +1718,15 @@ class SemanticTaskManager:
             self._save_state(pack_id, index_state)
             try:
                 await self._verify_embedding_dimension(pack_id, provider, force=force)
-                result = await build_index(
-                    pack_dir,
-                    self.plugin_data_dir,
-                    pack_id,
-                    provider,
-                    force=force,
-                    incremental_only=not force,
-                )
+                async with self._maintenance_scope():
+                    result = await build_index(
+                        pack_dir,
+                        self.plugin_data_dir,
+                        pack_id,
+                        provider,
+                        force=force,
+                        incremental_only=not force,
+                    )
                 latest = load_metadata(pack_dir)
                 has_errors = any(
                     isinstance(item, dict) and item.get("embedding_status") == "failed"
@@ -1916,14 +1952,15 @@ class SemanticTaskManager:
                 item.caption_status = "running"
                 raw_item.update(item.to_dict())
                 save_metadata(pack_dir, metadata)
-                caption = await generate_caption(
-                    self.context,
-                    path,
-                    vision_provider,
-                    category=item.category,
-                    category_description=item.category_description,
-                    available_categories=available_categories,
-                )
+                async with self._maintenance_scope():
+                    caption = await generate_caption(
+                        self.context,
+                        path,
+                        vision_provider,
+                        category=item.category,
+                        category_description=item.category_description,
+                        available_categories=available_categories,
+                    )
             self._record_vision_usage(pack_id, caption.get("token_usage"))
             manual_content = bool(
                 item.manual_override or item.provenance in {"manual", "mixed"}
@@ -2108,13 +2145,14 @@ class SemanticTaskManager:
                         "updated_at": utc_now(),
                     },
                 )
-                await build_index(
-                    pack_dir,
-                    self.plugin_data_dir,
-                    pack_id,
-                    embedding,
-                    force=force,
-                )
+                async with self._maintenance_scope():
+                    await build_index(
+                        pack_dir,
+                        self.plugin_data_dir,
+                        pack_id,
+                        embedding,
+                        force=force,
+                    )
             elif has_caption and not embedding.ready:
                 for item in metadata.get("images", {}).values():
                     if not isinstance(item, dict) or not semantic_caption_is_complete(

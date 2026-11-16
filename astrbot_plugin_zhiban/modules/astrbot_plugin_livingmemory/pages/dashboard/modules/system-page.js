@@ -53,6 +53,9 @@ export class SystemPage {
    * @param {Object} data - 统计数据
    */
   render(data) {
+    // 后台 Provider 状态只在数据可取时展示，不阻塞已有记忆浏览。
+    this.renderBackgroundStatus(data.background_status || null);
+
     // 更新统计卡片
     this.renderStatCards(data);
 
@@ -64,6 +67,25 @@ export class SystemPage {
 
     // 更新会话列表 - 后端返回 recent_sessions
     this.renderSessionList(data.recent_sessions || []);
+  }
+
+  /**
+   * 渲染后台 Provider 初始化状态，不暴露 Provider ID 或认证信息。
+   * @param {Object|null} status - 后端返回的脱敏状态
+   */
+  renderBackgroundStatus(status) {
+    const banner = document.getElementById("system-background-status");
+    const message = document.getElementById("system-background-status-message");
+    if (!banner || !message) return;
+    if (!status) {
+      banner.hidden = true;
+      message.textContent = "";
+      return;
+    }
+    const text = String(status.message || "").trim();
+    message.textContent = text;
+    banner.hidden = !text;
+    banner.dataset.state = String(status.state || "unknown");
   }
 
   /**

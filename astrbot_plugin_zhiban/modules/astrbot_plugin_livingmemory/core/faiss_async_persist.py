@@ -122,9 +122,13 @@ class AsyncIndexPersister:
     """把某个 EmbeddingStorage 实例的落盘替换为防抖异步写。"""
 
     def __init__(
-        self, storage: Any, debounce_seconds: float = DEFAULT_DEBOUNCE_SECONDS
+        self,
+        storage: Any,
+        debounce_seconds: float = DEFAULT_DEBOUNCE_SECONDS,
+        budget: Any | None = None,
     ) -> None:
         self._storage = storage
+        self._budget = budget
         self._debounce_seconds = max(0.0, float(debounce_seconds))
         # 读者 = search/落盘；写者 = insert/insert_batch/delete
         self._index_lock = _ReadersWriterLock()
@@ -173,6 +177,8 @@ class AsyncIndexPersister:
 
     async def _debounced_flush(self, seq: int) -> None:
         try:
+            if self._closed:
+                return
             if self._debounce_seconds > 0:
                 await asyncio.sleep(self._debounce_seconds)
             await self._do_flush(seq)
@@ -192,7 +198,16 @@ class AsyncIndexPersister:
         """
         if not force and (seq != self._seq or not self._dirty):
             return
-        loop = asyncio.get_running_loop()
+        # 先等待维护预算，再取落盘/索引锁。反过来会在预算持有者尝试增删
+        # 索引时形成「读锁等预算、预算等写锁」的跨任务死锁。
+        if self._budget is None:
+            await self._flush_locked()
+            return
+        async with self._budget.maintenance():
+            await self._flush_locked()
+
+    async def _flush_locked(self) -> None:
+        """在预算已取得后串行落盘；等待锁期间不改变预算获取顺序。"""
         async with self._flush_lock:
             if not self._dirty:
                 # 等锁期间已被另一次落盘写掉
@@ -205,20 +220,23 @@ class AsyncIndexPersister:
                 if index is None or not path:
                     self._dirty = False
                     return
-                fut = loop.run_in_executor(
-                    self._executor, _write_index_atomic, index, path
-                )
-                self._pending_write = fut
-                try:
-                    await asyncio.shield(fut)
-                except asyncio.CancelledError:
-                    await fut
-                    raise
-                finally:
-                    if self._pending_write is fut:
-                        self._pending_write = None
+                await self._write_index(index, path)
                 # 落盘期间增删被读锁挡住，写入内容即当前索引状态，脏标记可整体清掉
                 self._dirty = False
+
+    async def _write_index(self, index: Any, path: str) -> None:
+        """提交并等待一次真实 FAISS 写盘；调用方负责持有维护预算。"""
+        loop = asyncio.get_running_loop()
+        fut = loop.run_in_executor(self._executor, _write_index_atomic, index, path)
+        self._pending_write = fut
+        try:
+            await asyncio.shield(fut)
+        except asyncio.CancelledError:
+            await fut
+            raise
+        finally:
+            if self._pending_write is fut:
+                self._pending_write = None
 
     async def flush_now(self) -> None:
         """立即落盘未写变更，并等待进行中的写盘完成。
@@ -271,7 +289,7 @@ class AsyncIndexPersister:
         if pending_tasks:
             await asyncio.gather(*pending_tasks, return_exceptions=True)
         try:
-            if self._dirty:
+            if self._dirty and not getattr(self._budget, "_closed", False):
                 await self._do_flush(force=True)
             pending = self._pending_write
             if pending is not None:
@@ -293,7 +311,9 @@ def get_async_persister(storage: Any) -> AsyncIndexPersister | None:
 
 
 def install_async_persist(
-    storage: Any, debounce_seconds: float = DEFAULT_DEBOUNCE_SECONDS
+    storage: Any,
+    debounce_seconds: float = DEFAULT_DEBOUNCE_SECONDS,
+    budget: Any | None = None,
 ) -> AsyncIndexPersister | None:
     """在实例级替换 storage 的落盘行为为异步防抖写。
 
@@ -305,7 +325,7 @@ def install_async_persist(
     existing = get_async_persister(storage)
     if existing is not None:
         return existing
-    persister = AsyncIndexPersister(storage, debounce_seconds)
+    persister = AsyncIndexPersister(storage, debounce_seconds, budget=budget)
     # 先给变更方法套锁，再替换 save_index，保证写盘期间索引静止
     persister.wrap_mutation_methods()
     storage.save_index = persister.save_index

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from typing import Any
 
 from astrbot.api import logger
@@ -17,9 +18,11 @@ class AtomLifecycleManager:
         self,
         atom_store: AtomStore,
         config: dict[str, Any] | None = None,
+        budget: Any | None = None,
     ):
         self.atom_store = atom_store
         self.config = config or {}
+        self._budget = budget
         self._maintenance_interval_hours = float(
             self.config.get("atom_maintenance_interval_hours", 24.0)
         )
@@ -62,8 +65,21 @@ class AtomLifecycleManager:
                 continue
             await asyncio.sleep(self._maintenance_interval_hours * 3600.0)
 
+    @asynccontextmanager
+    async def _maintenance_scope(self):
+        """Only real lifecycle maintenance holds the host maintenance ticket."""
+        if self._budget is None:
+            yield
+            return
+        async with self._budget.maintenance():
+            yield
+
     async def run_maintenance(self) -> dict[str, int]:
         """Execute one full maintenance pass. Returns counts per action."""
+        async with self._maintenance_scope():
+            return await self._run_maintenance_impl()
+
+    async def _run_maintenance_impl(self) -> dict[str, int]:
         result: dict[str, int] = {}
 
         # 1. Expire stale atoms

@@ -43,7 +43,13 @@ FaissVecDB: Any = None
 class PluginInitializer(InitializerFaissMixin, InitializerFinalizeMixin):
     """插件初始化器"""
 
-    def __init__(self, context: Context, config_manager: ConfigManager, data_dir: str):
+    def __init__(
+        self,
+        context: Context,
+        config_manager: ConfigManager,
+        data_dir: str,
+        budget: Any | None = None,
+    ):
         """
         初始化插件初始化器
 
@@ -51,10 +57,12 @@ class PluginInitializer(InitializerFaissMixin, InitializerFinalizeMixin):
             context: AstrBot上下文
             config_manager: 配置管理器
             data_dir: 插件数据目录路径
+            budget: 宿主 BudgetScheduler；旧宿主可省略
         """
         self.context = context
         self.config_manager = config_manager
         self.data_dir = data_dir
+        self.budget = budget
 
         # 组件实例
         self.embedding_provider: EmbeddingProvider | None = None

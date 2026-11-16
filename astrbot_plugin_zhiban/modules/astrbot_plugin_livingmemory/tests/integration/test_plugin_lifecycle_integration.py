@@ -11,8 +11,8 @@ import pytest
 
 
 class _FakeInitializer:
-    def __init__(self, context, config_manager, data_dir):
-        del context, config_manager, data_dir
+    def __init__(self, context, config_manager, data_dir, budget=None):
+        del context, config_manager, data_dir, budget
         self.memory_engine = None
         self.memory_processor = None
         self.conversation_manager = None
