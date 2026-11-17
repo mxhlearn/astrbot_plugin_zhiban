@@ -32,6 +32,7 @@ from .core.storage import (
     register_files_with_token_service,
 )
 from .core.constants import Config
+from .media_budget import host_media_context
 from .core.message_adapter.sender import MessageDeliveryError, MessageSender
 from .core.message_adapter.node_builder import (
     build_all_nodes,
@@ -443,6 +444,9 @@ class VideoParserPlugin(Star):
             metadata["_text_metadata_fields"] = (
                 self.config_manager.message.text_metadata.visibility()
             )
+
+    def _media_budget_context(self):
+        return host_media_context(self.context)
 
     @staticmethod
     def _event_context(event: AstrMessageEvent) -> Dict[str, Any]:
@@ -902,15 +906,16 @@ class VideoParserPlugin(Star):
                     ):
                         return metadata
                     try:
-                        return await self.download_manager.process_metadata(
-                            session,
-                            metadata,
-                            proxy_addr=cfg.proxy.address,
-                            on_sendable_media=(
-                                send_opening_once if zip_requested else None
-                            ),
-                            video_cover_only=(False if zip_requested else None),
-                        )
+                        async with self._media_budget_context():
+                            return await self.download_manager.process_metadata(
+                                session,
+                                metadata,
+                                proxy_addr=cfg.proxy.address,
+                                on_sendable_media=(
+                                    send_opening_once if zip_requested else None
+                                ),
+                                video_cover_only=(False if zip_requested else None),
+                            )
                     except asyncio.CancelledError:
                         raise
                     except Exception as exc:
@@ -920,8 +925,17 @@ class VideoParserPlugin(Star):
                         metadata["error"] = str(exc)
                         return metadata
 
+                max_metadata_flows = max(
+                    1, min(cfg.download.max_concurrent_downloads, len(metadata_list) or 1)
+                )
+                flow_limit = asyncio.Semaphore(max_metadata_flows)
+
+                async def process_limited(metadata):
+                    async with flow_limit:
+                        return await process_single(metadata)
+
                 processed_metadata_list = await asyncio.gather(
-                    *(process_single(metadata) for metadata in metadata_list)
+                    *(process_limited(metadata) for metadata in metadata_list)
                 )
             elif cfg.admin.debug_mode:
                 self.logger.debug("富媒体输出已关闭，跳过下载阶段")
