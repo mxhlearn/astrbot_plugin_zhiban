@@ -1088,7 +1088,10 @@ async function createModuleFrameElement(item, requestedRoute = null) {
       query: route.query,
     }) || null;
     frame.addEventListener("zhiban:navigate", (event) => {
-      if (sequence !== moduleFrameSequence || activeModuleFrame !== frame) return;
+      // The bridge dispatches on the frame that originated the navigation.
+      // navigateModuleSubpage may replace activeModuleFrame synchronously, so
+      // requiring object identity here would discard the only valid event.
+      if (sequence !== moduleFrameSequence || item.key !== activeKey || activeView !== "workbench") return;
       const detail = event.detail || {};
       const route = normalizeSubpage(item.key, detail.path || detail.subpage || "");
       if (!route.key) {
