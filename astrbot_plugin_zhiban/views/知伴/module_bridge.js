@@ -110,7 +110,8 @@
     // data-module-target values are module-relative; ordinary anchors are
     // page-relative. Try both controlled bases, but always reject URLs outside
     // this exact module root (never cross-module or sandbox escape).
-    const bases = rawTarget.startsWith('#') ? [moduleRoot] : [moduleRoot, pageRoot];
+    const explicitModulePath = rawTarget.includes('/') || rawTarget.startsWith('#');
+    const bases = explicitModulePath ? [moduleRoot] : [moduleRoot, pageRoot];
     for (const base of bases) {
       const candidate = rawTarget.startsWith('#') ? `${initialPath}${rawTarget}` : rawTarget;
       let url;
