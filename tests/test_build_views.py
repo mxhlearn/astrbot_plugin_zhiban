@@ -85,6 +85,10 @@ class BuildViewsTests(unittest.TestCase):
             self.assertIn(f'groupKey: "{group_key}"', entry)
         self.assertIn("renderGlobalOverview", app_source)
         self.assertIn("renderGlobalSettings", app_source)
+        for key in ("chat_concurrency", "media_concurrency", "maintenance_concurrency", "media_queue_limit", "maintenance_queue_limit"):
+            self.assertIn(f'["{key}"', app_source)
+        self.assertIn("moduleStates.set(module.key", app_source)
+        self.assertIn("await refreshStatus({ background: true });", app_source)
         self.assertIn('"今日成功回复"', app_source)
         self.assertIn("successful_responses", app_source)
         self.assertIn("Token 未统计", app_source)
@@ -161,7 +165,7 @@ class BuildViewsTests(unittest.TestCase):
             self.assertIn("DeepSeek V4.1 Flash", source)
             self.assertIn("回复防抖、Anysearch 联网搜索、缓存与调度等代码实现", source)
             self.assertIn("AstrBot 运行时使用部署者自行配置的 Provider，与上述开发工具相互独立", source)
-            self.assertIn("2,955 项测试通过（根测试 186 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28）", source)
+            self.assertIn("3,409 项测试通过（根测试 186 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28 + QQ 动态模块 454）", source)
             self.assertIn("OneBot v11", source)
             for repo in (
                 "astrbot_plugin_angel_heart",

@@ -1797,6 +1797,12 @@ async function renderGlobalSettings(savedMessage = "") {
     if (requestId !== settingsRequest || activeView !== "global") return;
     const current = data.settings && typeof data.settings === "object" ? data.settings : {};
     const schema = data.schema?.items && typeof data.schema.items === "object" ? data.schema.items : {};
+    await refreshStatus({ background: true });
+    if (requestId !== settingsRequest || activeView !== "global") return;
+    for (const module of data.modules || []) {
+      if (!module || typeof module !== "object" || !module.key) continue;
+      moduleStates.set(module.key, { ...module, ...(moduleStates.get(module.key) || {}) });
+    }
     const panel = element("div", "settings-panel");
     const message = element("p", `settings-message${savedMessage.startsWith("错误") ? " error" : savedMessage ? " success" : ""}`, savedMessage);
     message.setAttribute("aria-live", "polite");
@@ -1808,6 +1814,11 @@ async function renderGlobalSettings(savedMessage = "") {
       ["queue_limit", "聊天等待总数", "所有会话合计的等待消息上限", 1, 100],
       ["session_queue_limit", "单会话等待数", "同一会话允许等待的消息上限", 1, 10],
       ["wait_seconds", "聊天等待上限", "等待资源的最长秒数", 1, 600],
+      ["chat_concurrency", "聊天并发上限", "同时生成回复的会话数；提高会增加内存占用", 1, 4],
+      ["media_concurrency", "媒体处理并发上限", "TTS、图片、音乐与空间等媒体任务并发", 1, 2],
+      ["maintenance_concurrency", "后台维护并发上限", "记忆、索引、备份等维护任务并发", 1, 2],
+      ["media_queue_limit", "媒体排队上限", "等待媒体资源的最大任务数", 1, 32],
+      ["maintenance_queue_limit", "后台维护排队上限", "等待维护资源的最大任务数", 1, 32],
     ];
     const controls = new Map();
     for (const [key, label, hint, min, max] of definitions) {

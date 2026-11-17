@@ -13,7 +13,7 @@
   <a href="#安装与切换"><img alt="Version" src="https://img.shields.io/badge/version-0.3.5-2f6b4f?style=flat-square"></a>
   <a href="#兼容范围"><img alt="AstrBot" src="https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square"></a>
   <a href="#兼容范围"><img alt="OneBot" src="https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square"></a>
-  <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-2955%20Python%20%2B%20141%20Node-2f6b4f?style=flat-square"></a>
+  <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-3409%20Python%20%2B%20141%20Node-2f6b4f?style=flat-square"></a>
 </p>
 
 ---
@@ -180,7 +180,7 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 
 知伴 0.3.5 的验证范围：
 
-- **Python**：2,955 项测试通过（根测试 186 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28），7 项跳过，另有 127 个子测试通过（根 34 + 表情 93）。
+- **Python**：3,409 项测试通过（根测试 186 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28 + QQ 动态模块 454），7 项跳过，另有 127 个子测试通过（根 34 + 表情 93）。
 - **Node**：141 项测试通过（根桥接/前端 47 + 表情前端 94）。
 - **构建**：资源清单、ZIP 和 SHA-256 校验流程可用；具体文件数以构建产物为准。
 - **统计口径**：知伴 Token 仅计知伴可识别的 Provider 最终响应；AstrBot 全局 Token 来自只读 `provider_stats`，包含非知伴调用，两者不混算；缺 usage 显示“未统计/暂无”，不伪报 0。
@@ -201,8 +201,8 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 
 | 范围 | 本次结果 |
 | --- | --- |
-| 总览、五个一级入口、全局设置 | 通过；导航选中与标题即时更新 |
-| 聊天互动、记忆成长、表情互动、语音回复、图片创作、音乐点播、QQ 动态 | 七个工作台均完成页面读取、桥接握手、业务界面挂载 |
+| 总览、五个一级入口、全局设置 | 通过；导航选中与标题即时更新；全局设置显示 8 个调度/并发/排队字段并刷新真实模块状态 |
+| 十一个模块入口 | 全部可达并显示运行/业务状态；七个页面工作台完成页面读取、桥接握手和业务界面挂载 |
 | 联网搜索 | 页面加载显示 API Key 未配置，未自动发起请求；并发 2、响应上限 1 MiB、查询上限 2000 字符显示正确 |
 | 记忆成长 | 页面可打开；当前实例读取现有图谱数据并显示业务可用；未新增记忆或执行 Provider 生成链路 |
 | 表情互动 | 顶部资源广场、空态“前往资源广场”、语义化、设置中心均可达；设置深链与 9 个一级标签逐项通过；未配置视觉/向量模型时按钮禁用并说明原因 |
