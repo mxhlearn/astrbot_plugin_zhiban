@@ -4,6 +4,7 @@
   const MODULE_API_NAMES = {
     heart: "astrbot_plugin_angel_heart",
     search: "astrbot_plugin_anysearch",
+    parser: "astrbot_plugin_media_parser",
     memory: "astrbot_plugin_livingmemory",
     meme: "meme_manager",
     tts: "astrbot_plugin_breeze_tts",
@@ -111,8 +112,14 @@
     // The child may report either a module-relative path or the signed asset
     // URL visible in its srcdoc. Only the latter is absolute; never accept an
     // arbitrary origin or an absolute path that is not rooted at this module.
-    const absolute = /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(rawTarget);
     const rawPathText = rawTarget.split(/[?#]/, 1)[0];
+    const absolute = /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(rawTarget);
+    if (!absolute && (/\?/.test(rawTarget) || /#/.test(rawTarget))) {
+      throw new Error("模块子页面路径无效");
+    }
+    if (absolute && !/\/modules\/[^/?#]+\//.test(decodeURIComponent(rawPathText))) {
+      throw new Error("模块子页面不在允许范围");
+    }
     let decodedRawPath = rawPathText;
     try {
       decodedRawPath = decodeURIComponent(rawPathText);

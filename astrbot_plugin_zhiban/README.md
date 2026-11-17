@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>十一个业务模块，一个知伴。</strong><br>
+  <strong>十二个业务模块，一个知伴。</strong><br>
   面向 AstrBot 与 OneBot v11 的浅绿色中文整合应用。
 </p>
 
@@ -13,7 +13,7 @@
   <a href="#安装与切换"><img alt="Version" src="https://img.shields.io/badge/version-0.3.5-2f6b4f?style=flat-square"></a>
   <a href="#兼容范围"><img alt="AstrBot" src="https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square"></a>
   <a href="#兼容范围"><img alt="OneBot" src="https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square"></a>
-  <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-3409%20Python%20%2B%20141%20Node-2f6b4f?style=flat-square"></a>
+  <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-3412%20Python%20%2B%20141%20Node-2f6b4f?style=flat-square"></a>
 </p>
 
 ---
@@ -24,7 +24,7 @@
 
 整合层负责四件事：
 
-1. 统一十一个模块的加载、重载、冲突检查和资源清理。
+1. 统一十二个模块的加载、重载、冲突检查和资源清理。
 2. 用五个稳定入口组织功能，统一状态与配置体验。
 3. 在 AstrBot 鉴权下代理模块 API，保护密钥与配置版本冲突。
 4. 以经过清单管理的浅绿色主题和轻量导航适配上游页面。
@@ -52,12 +52,13 @@
 - 1440、1024、768、390 px 已完成主外壳、记忆成长与图片创作的视觉和横向溢出回归；其余工作台完成登录态进入与配置检查。
 - 不支持或用户选择减少动态效果时，跨文档过渡自动关闭。
 
-## 十一个运行模块
+## 十二个运行模块
 
 | 模块 | 主要能力 | 页面 / 运行方式 |
 | --- | --- | --- |
 | 聊天互动（2.2.13） | 群聊接话、唤醒、上下文、私聊处理 | 天使之心页面 |
 | 联网搜索（v0.3） | Anysearch 实时搜索、公开网页正文提取 | 有界联网页面、命令与可选 LLM 工具 |
+| 万能解析（1.13.3） | 多平台链接、图文音视频解析与媒体交付 | 自动消息处理、命令与受控媒体交付 |
 | 记忆成长（2.8.2） | LivingMemory 长期记忆、知识图谱、人格审批 | LivingMemory 页面与知伴审批库 |
 | 表情互动（5.3.5） | 服务器图库、分类、发送、语义检索 | 表情包管理页面 |
 | 语音回复（1.3.1） | BreezeBlue TTS、音色、语速、概率 | 语音设置页面 |
@@ -96,7 +97,7 @@ LivingMemory 是唯一长期记忆模块。AngelMemory 和内容/链接过滤不
 3. 停用独立同源业务插件，避免处理器、LLM 工具或后台任务重复注册。
 4. 启用知伴并重载 AstrBot。
 5. 打开 `扩展功能 → 知伴`。
-6. 在 `总览 → 全局设置` 检查十一个模块，再按功能页配置外部服务。
+6. 在 `总览 → 全局设置` 检查十二个模块，再按功能页配置外部服务。
 7. 发送 `/知伴 菜单` 和 `/知伴 状态` 验证运行。
 
 ### 回退
@@ -180,11 +181,11 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 
 知伴 0.3.5 的验证范围：
 
-- **Python**：3,409 项测试通过（根测试 186 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28 + QQ 动态模块 454），7 项跳过，另有 127 个子测试通过（根 34 + 表情 93）。
+- **Python**：3,412 项测试通过（根测试 189 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28 + QQ 动态模块 454），7 项跳过，另有 127 个子测试通过（根 34 + 表情 93）。
 - **Node**：141 项测试通过（根桥接/前端 47 + 表情前端 94）。
 - **构建**：资源清单、ZIP 和 SHA-256 校验流程可用；具体文件数以构建产物为准。
 - **统计口径**：知伴 Token 仅计知伴可识别的 Provider 最终响应；AstrBot 全局 Token 来自只读 `provider_stats`，包含非知伴调用，两者不混算；缺 usage 显示“未统计/暂无”，不伪报 0。
-- **页面**：登录态下检查五入口、总览、全局设置、十一个模块入口和配置页。
+- **页面**：登录态下检查五入口、总览、全局设置、十二个模块入口和配置页。
 - **响应式**：1440/1024/768/390 px 的主外壳、记忆成长与图片创作通过；模块配置页在登录态下可打开。
 - **竞态**：快速并发切换停留在最后目标，没有旧页面覆盖。
 - **主题**：主应用浅色/深色切换即时传递到记忆成长和图片创作；两页均无独立外观入口或旧本地缓存。
@@ -202,8 +203,9 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 | 范围 | 本次结果 |
 | --- | --- |
 | 总览、五个一级入口、全局设置 | 通过；导航选中与标题即时更新；全局设置显示 8 个调度/并发/排队字段并刷新真实模块状态 |
-| 十一个模块入口 | 全部可达并显示运行/业务状态；七个页面工作台完成页面读取、桥接握手和业务界面挂载 |
+| 十二个模块入口 | 全部可达并显示运行/业务状态；七个页面工作台完成页面读取、桥接握手和业务界面挂载 |
 | 联网搜索 | 页面加载显示 API Key 未配置，未自动发起请求；并发 2、响应上限 1 MiB、查询上限 2000 字符显示正确 |
+| 万能解析 | 入口与配置页可达；基础链接解析业务可用，Playwright/FFmpeg 可选增强缺失时明确降级 |
 | 记忆成长 | 页面可打开；当前实例读取现有图谱数据并显示业务可用；未新增记忆或执行 Provider 生成链路 |
 | 表情互动 | 顶部资源广场、空态“前往资源广场”、语义化、设置中心均可达；设置深链与 9 个一级标签逐项通过；未配置视觉/向量模型时按钮禁用并说明原因 |
 | 图片创作 | 通过；无供应商时显示空态与新增入口，不把未配置误报为加载失败 |
@@ -212,7 +214,7 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 | 模块配置 | 七个模块配置页均可打开；敏感值不回显 |
 | 设置深链刷新 | 通过；刷新后恢复 `meme/settings#config-group-semantic-models`，关闭弹窗后不被旧 hash 重新打开 |
 | 快速切换 | 连续切换后停留在最后目标，只保留一个工作台 frame |
-| 未配置/未测试 | 图片供应商、语音 API Key、Bilibili 登录、QQ 空间 Cookie 未配置；记忆新增/Provider 生成、真实发布、付费生成、真实资料修改和 Linux 部署未执行 |
+| 未配置/未测试 | 图片供应商、语音 API Key、Bilibili 登录、QQ 空间 Cookie、Playwright Chromium、FFmpeg 未配置；记忆新增/Provider 生成、真实平台解析、真实发布、付费生成、真实资料修改和 Linux 部署未执行 |
 
 ## AI 辅助开发
 
@@ -231,7 +233,7 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 | --- | --- |
 | `main.py` | 插件入口、Web API、全局设置、聊天准入与业务就绪 |
 | `runtime.py` | 模块加载、重载、冲突检测、处理器/工具清理 |
-| `catalog.py` | 十一个模块与五个一级入口的元数据 |
+| `catalog.py` | 十二个模块与五个一级入口的元数据 |
 | `settings_service.py` | 配置版本、校验、密钥脱敏与保存 |
 | `scheduling.py` | 队列、超时和媒体串行 |
 | `memory_control.py` | 人格建议审批 |
@@ -266,6 +268,7 @@ python package_release.py
 | 聊天互动（2.2.13） | [kawayiYokami/astrbot_plugin_angel_heart](https://github.com/kawayiYokami/astrbot_plugin_angel_heart) | 天使之心聊天流程和页面 | AGPL v3 |
 | 记忆成长（2.8.2） | [lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory](https://github.com/lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory) | LivingMemory 页面、长期记忆和检索 | AGPL v3 |
 | 联网搜索（v0.3） | [AgIzT/astrbot_plugin_anysearch](https://github.com/AgIzT/astrbot_plugin_anysearch) | 实时搜索、公开网页正文提取与有界联网工具 | MIT |
+| 万能解析（1.13.3） | [drdon1234/astrbot_plugin_media_parser](https://github.com/drdon1234/astrbot_plugin_media_parser) | 多平台链接、图文音视频解析与媒体交付 | AGPL v3 |
 | 回复防抖（1.4.2） | [Ye1xiaotian/astrbot_plugin_reply_merge](https://github.com/Ye1xiaotian/astrbot_plugin_reply_merge) | 私聊 draft-window 防抖与最终提示词注入 | MIT |
 | 表情互动（5.3.5） | [anka-afk/astrbot_plugin_meme_manager](https://github.com/anka-afk/astrbot_plugin_meme_manager) | 图库、语义检索和发送 | MIT |
 | 语音回复（1.3.1） | [hangdingding/AstrBot-breezetts](https://github.com/hangdingding/AstrBot-breezetts) | BreezeBlue TTS | 未发现 LICENSE，待核实 |
@@ -289,13 +292,13 @@ python package_release.py
 ~~~~text
 astrbot_plugin_zhiban/
   main.py                 插件入口、全局设置与业务就绪
-  runtime.py              十一个模块生命周期和资源清理
-  catalog.py              五入口和十一个模块元数据
+  runtime.py              十二个模块生命周期和资源清理
+  catalog.py              五入口和十二个模块元数据
   settings_service.py     配置版本与密钥安全
   scheduling.py           聊天队列和媒体串行
   memory_control.py       人格建议审批
   views/知伴/             侧栏应用、配置和桥接
-  modules/                十一个运行模块、资源和许可证
+  modules/                十二个运行模块、资源和许可证
   _conf_schema.json       配置 schema
   metadata.yaml           版本、平台与宿主兼容范围
 tests/                    生命周期、配置、桥接、资源和状态回归
@@ -305,4 +308,4 @@ package_release.py        ZIP、哈希与发布文件清单
 ~~~~
 
 
-> **万能解析器状态**：原候选 `Zhalslar/astrbot_plugin_parser` 与账号当前均返回 404；GitHub 搜索只出现无法确认归属的第三方同名仓库，因此本版本未安装或部署解析器，也未从教程或陌生镜像执行脚本。待可信上游地址、维护归属和许可证明确后再单独验收。
+> **万能解析器状态**：已锁定并整合 `drdon1234/astrbot_plugin_media_parser` 提交 `0ec4ad6f67a9b4618f8effd995ca74023dddaa22`（`1.13.3`，AGPL-3.0）。基础解析依赖已就绪；Playwright Chromium 与 FFmpeg 增强按平台按需安装，相关能力缺失时模块显示降级说明。

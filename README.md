@@ -11,10 +11,10 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square)](https://github.com/AstrBotDevs/AstrBot)
 [![OneBot](https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square)](#兼容矩阵)
 [![Python](https://img.shields.io/badge/Python-3.12-3f7560?style=flat-square)](#本地开发)
-[![Tests](https://img.shields.io/badge/tests-3409%20Python%20%2B%20141%20Node-2f6b4f?style=flat-square)](#质量与验证)
+[![Tests](https://img.shields.io/badge/tests-3412%20Python%20%2B%20141%20Node-2f6b4f?style=flat-square)](#质量与验证)
 [![License](https://img.shields.io/badge/license-mixed%20%2F%20review%20required-8c5917?style=flat-square)](astrbot_plugin_zhiban/README.md)
 
-[快速开始](#快速开始) · [功能模块](#十一个运行模块) · [完整文档](astrbot_plugin_zhiban/README.md)
+[快速开始](#快速开始) · [功能模块](#十二个运行模块) · [完整文档](astrbot_plugin_zhiban/README.md)
 
 </div>
 
@@ -26,13 +26,13 @@
 
 | 问题 | 知伴的处理 |
 | --- | --- |
-| 功能分散在十一个插件 | 五个一级入口、十一个内部模块、一个侧栏应用 |
+| 功能分散在十二个插件 | 五个一级入口、十二个内部模块、一个侧栏应用 |
 | “开着”不代表“能用” | 启用、运行、业务就绪三层状态 |
 | 配置入口与宿主设置重复 | 总览集中启停与调度，各模块保留业务配置 |
 | 密钥可能回显或误覆盖 | 脱敏、版本冲突检测、显式清除、保存后应用 |
 | 页面风格不一致 | 浅绿色品牌主题与受控上游样式适配 |
 | 每次切换都整页重载 | 单一外壳、内容面板切换、短时状态缓存与竞态保护 |
-| 十一个工作台同时常驻 | 只加载当前页面，保留低占用边界 |
+| 十二个工作台同时常驻 | 只加载当前页面，保留低占用边界 |
 
 ## 界面
 
@@ -59,17 +59,18 @@
 | 入口 | 模块 | 主要用途 |
 | --- | --- | --- |
 | **总览** | 运行总览、全局设置 | 待办、状态、队列、模块启停与资源设置 |
-| **聊天系统** | 聊天互动、联网搜索、主动问候、历史查询 | 回应、实时检索、问候计划和群记录检索 |
+| **聊天系统** | 聊天互动、联网搜索、万能解析、主动问候、历史查询 | 回应、实时检索、链接解析、问候计划和群记录检索 |
 | **记忆成长** | LivingMemory | 长期记忆、知识图谱、召回与人格审批 |
 | **表达创作** | 表情互动、语音回复、图片创作、音乐点播 | 图库、TTS、生图改图与音乐发送 |
 | **QQ 社交** | QQ 动态、QQ 资料 | 空间动态、状态、签名、昵称与头像 |
 
-## 十一个运行模块
+## 十二个运行模块
 
 | 模块 | 能力 | 业务页面 / 运行形态 |
 | --- | --- | --- |
 | **聊天互动** | 群聊接话、唤醒、上下文、私聊处理 | 天使之心页面 |
 | **联网搜索** | Anysearch 实时搜索、公开网页正文提取与配置状态 | 有界联网页面、命令与可选 LLM 工具 |
+| **万能解析** | B站、抖音、小红书、微博、知乎、YouTube 等多平台链接与媒体解析 | 自动消息处理、命令与受控媒体交付 |
 | **记忆成长** | 长期记忆、检索、知识图谱、人格建议 | LivingMemory 页面与知伴审批库 |
 | **表情互动** | 图库、分类、发送与语义检索 | 表情包管理页面 |
 | **语音回复** | BreezeBlue TTS、音色、语速、概率 | 语音设置页面 |
@@ -98,7 +99,7 @@
 2. 将 `astrbot_plugin_zhiban` 放入 AstrBot 插件目录。
 3. 停用与知伴同名的独立上游插件，避免重复处理器、工具和后台任务。
 4. 启用知伴并重载 AstrBot。
-5. 打开 AstrBot 侧栏 `扩展功能 → 知伴`，从 `总览 → 全局设置` 检查十一个模块。
+5. 打开 AstrBot 侧栏 `扩展功能 → 知伴`，从 `总览 → 全局设置` 检查十二个模块。
 6. 发送 `/知伴 菜单` 与 `/知伴 状态` 验证命令与管理入口。
 
 详细迁移、回退、配置和数据边界见 **[完整插件文档](astrbot_plugin_zhiban/README.md)**。
@@ -129,7 +130,7 @@
 
 ## 低占用与切换体验
 
-- 只加载当前工作台，不常驻十一个模块页面。
+- 只加载当前工作台，不常驻十二个模块页面。
 - 离开页面释放知伴引用；上游独立轮询按各自实现运行。
 - 同一入口重复点击不重新导航；同时发起的快速跳转由最后目标决定。
 - 当前页面隐藏时停止知伴状态轮询。
@@ -139,7 +140,7 @@
 
 ## 质量与验证
 
-- **Python**：3,409 项测试通过（根测试 186 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28 + QQ 动态模块 454），7 项跳过，另有 127 个子测试通过（根 34 + 表情 93）。
+- **Python**：3,412 项测试通过（根测试 189 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28 + QQ 动态模块 454），7 项跳过，另有 127 个子测试通过（根 34 + 表情 93）。
 - **Node**：141 项测试通过（根桥接/前端 47 + 表情前端 94）。
 - **页面**：登录态下检查五入口、浅绿首帧、模块挂载、快速切换与配置页；Linux 实际部署仍待目标环境验收。
 - **配置安全**：并发冲突、密钥脱敏、显式清除、保存/应用、无修改反馈均有回归。
@@ -149,9 +150,10 @@
 - **同负载观测**：本机旧/新安装态各 20 轮一级切换约 20.0s / 19.8s，结束时均保留 1 个 frame；宿主重启后的 Private/WorkingSet 为约 3.157/0.571 GB 与 3.193/0.608 GB，未证明进程 RSS 降低。浏览器顶层 Performance 指标受宿主 frame 边界限制，不能代表 iframe 内部 JS heap。
 - **加载体验**：同一模块路由复用已就绪 frame；模块 HTML 使用 30 秒内、最多 6 条且估算不超过 2 MiB（单条 512 KiB）的浏览器内存缓存；UTF-8 字节为估算，不等同 JS heap。过期项由低频维护清理，进入分组后仅串行预取可见分组的受认证 HTML，最多 1 个请求在途，离开页面/分组或节省流量时取消；父加载条在 iframe 插入后移除，刷新/应用/失败会失效。
 - **回复防抖**：采用 `reply_merge` 1.4.2 的 draft-window 机制替换此前自研静默合并。当前仅接管私聊，群聊继续由聊天互动（AngelHeart）唯一负责，避免双层防抖。每窗口默认最多 4 轮草稿调用、8 条补充、16 KiB 文本和 30 秒；无标记/超时退回等待，不丢弃正常最终回复。草稿只用于专用控制标记判断与最终提示词注入，不写入长期记忆或作为聊天内容展示；流式回复已经发出的片段无法撤回。草稿调用会产生额外 Provider 费用，并与最终回复分别计量。
+- **万能解析**：锁定 `drdon1234/astrbot_plugin_media_parser` 的 `0ec4ad6f` 快照并接入第 12 个模块；基础解析可用，Playwright/FFmpeg 可选增强缺失时明确降级。
 - **真实导航**：本机安装态下联网搜索显示 API Key 未配置且不自动请求；表情顶部资源广场、空态“前往资源广场”、语义化、设置深链及刷新恢复均通过。
 - **资源预算**：聊天、媒体、后台维护默认各 1 个并发，媒体与后台共享重资源预算；模块启动/清理、TTS 合成、图片生成/编辑、音乐交付、QQ 空间 daemon 启停已接入。记忆衰减/整合/备份、FAISS 实际写盘、索引重建，以及表情描述、向量生成、语义检索和自动收集重建只在真实重任务区间取维护票；空闲等待、防抖窗口和轻量轮询不持票。其他模块的非重轮询和未被识别为资源密集的定时任务仍按上游实现运行，不宣称全部后台任务已纳入。 Anysearch 搜索/正文提取默认并发 2、请求超时 20 秒、单响应 1 MiB、文本缓存 120 秒且最多 64 条/2 MiB；缺 API Key 显示未配置且不发起请求。
-- **工作台**：本机登录态下十一个模块均完成页面读取与状态显示，七个页面工作台完成桥接握手与界面挂载；图片创作无供应商、QQ 动态 Cookie 失效时显示对应受限状态。
+- **工作台**：本机登录态下十二个模块均完成页面读取与状态显示，七个页面工作台完成桥接握手与界面挂载；图片创作无供应商、QQ 动态 Cookie 失效时显示对应受限状态。
 - **构建**：资源清单、ZIP 和 SHA-256 校验流程可用；具体文件数以构建产物为准。
 - **统计口径**：知伴 Token 仅计知伴可识别的 Provider 最终响应；AstrBot 全局 Token 来自只读 `provider_stats`，包含非知伴调用，两者不混算；缺 usage 显示“未统计/暂无”，不伪报 0。
 
@@ -177,6 +179,7 @@
 | 聊天互动（2.2.13） | [kawayiYokami/astrbot_plugin_angel_heart](https://github.com/kawayiYokami/astrbot_plugin_angel_heart) | 天使之心聊天流程与页面 | AGPL v3 |
 | 记忆成长（2.8.2） | [lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory](https://github.com/lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory) | 长期记忆、图谱、召回、提示词与数据工具 | AGPL v3 |
 | 联网搜索（v0.3） | [AgIzT/astrbot_plugin_anysearch](https://github.com/AgIzT/astrbot_plugin_anysearch) | Anysearch 搜索、正文提取与有界联网工具 | MIT |
+| 万能解析（1.13.3） | [drdon1234/astrbot_plugin_media_parser](https://github.com/drdon1234/astrbot_plugin_media_parser) | 多平台链接、图文音视频解析与媒体交付 | AGPL v3 |
 | 回复防抖（1.4.2） | [Ye1xiaotian/astrbot_plugin_reply_merge](https://github.com/Ye1xiaotian/astrbot_plugin_reply_merge) | 有界 draft-window 私聊防抖与最终提示词注入 | MIT |
 | 表情互动（5.3.5） | [anka-afk/astrbot_plugin_meme_manager](https://github.com/anka-afk/astrbot_plugin_meme_manager) | 图库、发送、语义检索与管理页 | MIT |
 | 语音回复（1.3.1） | [hangdingding/AstrBot-breezetts](https://github.com/hangdingding/AstrBot-breezetts) | BreezeBlue TTS 页面与调用 | 未发现 LICENSE，待核实 |
@@ -190,7 +193,7 @@
 ### 架构与体验参考
 
 - [AstrBot](https://github.com/AstrBotDevs/AstrBot)：插件生命周期、Dashboard 页面、鉴权、页面桥接和平台适配的宿主环境。
-- 上述十一个业务项目的原有导航、表单密度、模块语义与工作流；知伴在其上统一外层入口，不宣称原创这些业务能力。
+- 上述十二个业务项目的原有导航、表单密度、模块语义与工作流；知伴在其上统一外层入口，不宣称原创这些业务能力。
 - 固定五入口、模块状态模型、配置安全流程、浅绿色设计语言与页面切换实现属于知伴整合层，代码和适配记录在本仓库。
 
 本仓库已公开，但其中整合了多个上游项目，许可证状态包含 AGPL v3、MIT、缺失与待澄清项。使用、再分发或商业部署前，请按各模块 `metadata.yaml` 与随附许可证逐项核实；公开可见不等于额外授权。
@@ -201,11 +204,11 @@
 astrbot_plugin_zhiban/
   main.py                  插件入口、Web API、全局设置、聊天准入
   runtime.py               模块生命周期、冲突与资源清理
-  catalog.py               十一个模块和五入口元数据
+  catalog.py               十二个模块和五入口元数据
   settings_service.py      配置版本、校验、密钥脱敏
   scheduling.py            队列、超时与媒体串行
   views/知伴/              侧栏应用、工作台、主题与桥接
-  modules/                 十一个运行模块的源码、资源和许可
+  modules/                 十二个运行模块的源码、资源和许可
 tests/                     配置、生命周期、桥接、资源和调度测试
 build_views.py             生成模块资源与适配清单
 build_schema.py            汇总配置 schema
@@ -227,4 +230,4 @@ python package_release.py
 版本号以 `metadata.yaml` 为准。行为、配置或接口变化应同时更新测试、构建产物和安装副本校验；生产部署还需结合目标 AstrBot、平台适配器和数据规模验收。
 
 
-> **万能解析器状态**：原候选 `Zhalslar/astrbot_plugin_parser` 与账号当前均返回 404；GitHub 搜索只出现无法确认归属的第三方同名仓库，因此本版本未安装或部署解析器，也未从教程或陌生镜像执行脚本。待可信上游地址、维护归属和许可证明确后再单独验收。
+> **万能解析器状态**：已锁定并整合 `drdon1234/astrbot_plugin_media_parser` 提交 `0ec4ad6f67a9b4618f8effd995ca74023dddaa22`（`1.13.3`，AGPL-3.0）。基础解析依赖已就绪；Playwright Chromium 与 FFmpeg 增强按平台按需安装，相关能力缺失时模块显示降级说明。

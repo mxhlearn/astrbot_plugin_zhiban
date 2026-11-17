@@ -54,10 +54,10 @@ class BuildViewsTests(unittest.TestCase):
                 self.assertIn("help:", entry)
                 self.assertNotIn("page:", entry)
 
-    def test_five_primary_groups_keep_all_ten_modules_reachable(self):
+    def test_five_primary_groups_keep_all_modules_reachable(self):
         app_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "app.js").read_text(encoding="utf-8")
         index_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "index.html").read_text(encoding="utf-8")
-        self.assertEqual(len(build_views_module.MODULES), 11)
+        self.assertEqual(len(build_views_module.MODULES), 12)
         self.assertNotIn("filter", {item["key"] for item in build_views_module.MODULES})
         expected_groups = {
             "overview": "总览",
@@ -70,6 +70,8 @@ class BuildViewsTests(unittest.TestCase):
             self.assertRegex(app_source, rf'\{{ key: "{key}", label: "{label}"')
         for module, group, group_key in (
             ("heart", "聊天系统", "chat"),
+            ("search", "聊天系统", "chat"),
+            ("parser", "聊天系统", "chat"),
             ("proactive", "聊天系统", "chat"),
             ("eye", "聊天系统", "chat"),
             ("memory", "记忆成长", "memory"),
@@ -100,6 +102,7 @@ class BuildViewsTests(unittest.TestCase):
         self.assertIn("statusRequestInFlight", app_source)
         self.assertIn("runViewUpdate", app_source)
         self.assertIn('@view-transition { navigation: auto; }', index_source)
+        self.assertIn('十二个模块，一个知伴', index_source)
         self.assertIn("createModuleFrameElement(", app_source)
         self.assertNotIn("navigatePage(new URL(`modules/${item.page}/index.html`", app_source)
         self.assertIn("frame.setAttribute(\"sandbox\", \"allow-scripts allow-forms allow-downloads\")", app_source)
@@ -165,7 +168,7 @@ class BuildViewsTests(unittest.TestCase):
             self.assertIn("DeepSeek V4.1 Flash", source)
             self.assertIn("回复防抖、Anysearch 联网搜索、缓存与调度等代码实现", source)
             self.assertIn("AstrBot 运行时使用部署者自行配置的 Provider，与上述开发工具相互独立", source)
-            self.assertIn("3,409 项测试通过（根测试 186 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28 + QQ 动态模块 454）", source)
+            self.assertIn("3,412 项测试通过（根测试 189 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28 + QQ 动态模块 454）", source)
             self.assertIn("OneBot v11", source)
             for repo in (
                 "astrbot_plugin_angel_heart",
@@ -497,6 +500,26 @@ class BuildViewsTests(unittest.TestCase):
             self.assertLess(page.index(BRIDGE_FILENAME), page.index('src="./app.js"'))
             self.assertIn("window.testPage = true;", (view_root / "modules" / "meme" / "app.js").read_text(encoding="utf-8"))
 
+    def test_failure_message_from_installed_emoji_navigation_is_regression_covered(self):
+        host_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "host_bridge.js").read_text(encoding="utf-8")
+        module_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "module_bridge.js").read_text(encoding="utf-8")
+        self.assertIn("data-module-target values are module-relative", module_source)
+        self.assertIn("const bases = rawTarget.startsWith('#') ? [moduleRoot] : [moduleRoot, pageRoot];", module_source)
+        self.assertIn("const marker = `/modules/${moduleKey}/`;", host_source)
+        self.assertIn('if (absolute) throw new Error("模块子页面不在允许范围");', host_source)
+        self.assertIn('if (!allowed || !allowed.has(rawPath)) {', host_source)
+        for route in ("a_manage/index.html", "catalog/index.html", "semantic/index.html", "settings/index.html"):
+            self.assertIn(f'"{route}"', host_source)
+
+    def test_installed_navigation_wire_format_is_module_relative_and_host_validated(self):
+        host_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "host_bridge.js").read_text(encoding="utf-8")
+        module_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "module_bridge.js").read_text(encoding="utf-8")
+        self.assertIn("const wireRoute = { path: route.path, hash: route.hash, query: route.query };", module_source)
+        self.assertIn("send('navigate', { module: moduleKey, token, ...wireRoute });", module_source)
+        self.assertIn('if (!absolute && (/\\?/.test(rawTarget) || /#/.test(rawTarget))) {', host_source)
+        self.assertIn('if (absolute && !/\\/modules\\/[^/?#]+\\//.test(decodeURIComponent(rawPathText))) {', host_source)
+        self.assertIn('if (absolute) throw new Error("模块子页面不在允许范围");', host_source)
+        self.assertIn('if (!allowed || !allowed.has(rawPath)) {', host_source)
     def test_nested_pages_resolve_bridge_from_signed_view_root(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

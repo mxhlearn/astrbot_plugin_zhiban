@@ -19,6 +19,7 @@ import { ModulePageCache } from "./module_cache.mjs";
 const moduleCatalog = [
   { key: "heart", label: "聊天互动", logo: "./logos/heart.png", description: "群聊接话、唤醒与私聊上下文", group: "聊天系统", groupKey: "chat", page: "heart", plugin: "astrbot_plugin_angel_heart" },
   { key: "search", label: "联网搜索", logo: "./logos/search.png", description: "Anysearch 实时检索与公开网页正文提取", group: "聊天系统", groupKey: "chat", page: "search", plugin: "astrbot_plugin_anysearch" },
+  { key: "parser", label: "万能解析", logo: "./logos/parser.png", description: "多平台链接、图文音视频解析与媒体交付", group: "聊天系统", groupKey: "chat", plugin: "astrbot_plugin_media_parser" },
   { key: "memory", label: "记忆成长", logo: "./logos/memory.png", description: "长期记忆、知识检索与人格审批", group: "记忆成长", groupKey: "memory", page: "memory", plugin: "astrbot_plugin_livingmemory" },
   { key: "meme", label: "表情互动", logo: "./logos/meme.png", description: "服务器图库检索、管理与发送", group: "表达创作", groupKey: "creative", page: "meme", plugin: "astrbot_plugin_meme_manager" },
   { key: "tts", label: "语音回复", logo: "./logos/tts.png", description: "BreezeBlue 语音合成、音色与回复策略", group: "表达创作", groupKey: "creative", page: "tts", plugin: "astrbot_plugin_breeze_tts" },
