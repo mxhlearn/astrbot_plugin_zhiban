@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import hashlib
 import importlib.util
 import re
 import sys
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -155,6 +157,28 @@ class BuildViewsTests(unittest.TestCase):
         self.assertNotIn('data-page="system"', index_source)
         self.assertNotIn('key: "filter"', app_source)
         self.assertFalse((Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "logos" / "filter.svg").exists())
+
+    def test_management_schema_generation_is_idempotent(self):
+        root = Path(__file__).parents[1]
+        schema_path = root / "astrbot_plugin_zhiban" / "_conf_schema.json"
+        before = schema_path.read_bytes()
+        subprocess.run([sys.executable, str(root / "build_schema.py")], check=True, stdout=subprocess.DEVNULL)
+        self.assertEqual(schema_path.read_bytes(), before)
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            list(schema["management"]["items"]),
+            [
+                "chat_concurrency",
+                "media_concurrency",
+                "maintenance_concurrency",
+                "media_queue_limit",
+                "maintenance_queue_limit",
+                "queue_limit",
+                "session_queue_limit",
+                "wait_seconds",
+                "menu_order",
+            ],
+        )
 
     def test_readmes_document_ai_policy_and_integrated_upstreams(self):
         root = Path(__file__).parents[1]

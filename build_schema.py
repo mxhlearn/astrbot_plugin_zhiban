@@ -11,12 +11,6 @@ spec.loader.exec_module(catalog)
 
 def build():
     output_path = ROOT / "_conf_schema.json"
-    existing = {}
-    if output_path.exists():
-        try:
-            existing = json.loads(output_path.read_text(encoding="utf-8-sig"))
-        except (OSError, json.JSONDecodeError):
-            existing = {}
     schema = {}
     for item in catalog.MODULES:
         path = ROOT / "modules" / item["package"] / "_conf_schema.json"
@@ -37,14 +31,8 @@ def build():
                 "settings": {"type": "object", "description": item["label"] + "设置", "items": settings},
             },
         }
-    previous_management = existing.get("management", {}) if isinstance(existing, dict) else {}
-    management = previous_management if isinstance(previous_management, dict) else {}
-    management.setdefault("type", "object")
-    management.setdefault("description", "调度与管理")
-    management_items = management.get("items")
-    if not isinstance(management_items, dict):
-        management_items = {}
-        management["items"] = management_items
+    management = {"type": "object", "description": "调度与管理", "items": {}}
+    management_items = management["items"]
     # Keep the five global resource controls stable even when a previous schema
     # was produced by an older generator that only knew the chat queue fields.
     defaults = {
@@ -83,7 +71,7 @@ def build():
         },
     }
     for key, value in defaults.items():
-        management_items.setdefault(key, value)
+        management_items[key] = value
     management_items["menu_order"] = {
         "type": "list",
         "description": "菜单排列顺序",

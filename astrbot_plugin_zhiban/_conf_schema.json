@@ -5669,40 +5669,6 @@
     "type": "object",
     "description": "调度与管理",
     "items": {
-      "menu_order": {
-        "type": "list",
-        "description": "菜单排列顺序",
-        "default": [
-          "heart",
-          "search",
-          "parser",
-          "memory",
-          "meme",
-          "tts",
-          "proactive",
-          "brush",
-          "music",
-          "eye",
-          "qzone",
-          "qqprofile"
-        ],
-        "hint": "默认按预期使用频率排列，不是实测使用统计。"
-      },
-      "queue_limit": {
-        "type": "int",
-        "description": "聊天等待总数",
-        "default": 20
-      },
-      "session_queue_limit": {
-        "type": "int",
-        "description": "单会话等待数",
-        "default": 4
-      },
-      "wait_seconds": {
-        "type": "int",
-        "description": "聊天等待上限（秒）",
-        "default": 90
-      },
       "chat_concurrency": {
         "type": "int",
         "description": "资源调度 · 聊天并发上限（个）",
@@ -5748,6 +5714,52 @@
           "min": 1,
           "max": 32
         }
+      },
+      "queue_limit": {
+        "type": "int",
+        "description": "高级保护 · 全局排队消息上限（条）",
+        "default": 20,
+        "slider": {
+          "min": 1,
+          "max": 100
+        }
+      },
+      "session_queue_limit": {
+        "type": "int",
+        "description": "高级保护 · 单会话排队消息上限（条）",
+        "default": 4,
+        "slider": {
+          "min": 1,
+          "max": 10
+        }
+      },
+      "wait_seconds": {
+        "type": "int",
+        "description": "高级保护 · 排队等待上限（秒）",
+        "default": 90,
+        "slider": {
+          "min": 1,
+          "max": 600
+        }
+      },
+      "menu_order": {
+        "type": "list",
+        "description": "菜单排列顺序",
+        "default": [
+          "heart",
+          "search",
+          "parser",
+          "memory",
+          "meme",
+          "tts",
+          "proactive",
+          "brush",
+          "music",
+          "eye",
+          "qzone",
+          "qqprofile"
+        ],
+        "hint": "默认按预期使用频率排列，不是实测使用统计。"
       }
     }
   }
