@@ -1,7 +1,6 @@
 import asyncio
 import importlib.util
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -190,6 +189,186 @@ async def test_live_configure_applies_global_limits_and_preserves_active_owner()
         pass
     assert not scheduler._media.locked()
     assert scheduler.status()["media_running"] == 0
+
+
+@pytest.mark.asyncio
+async def test_lowering_idle_chat_capacity_removes_free_permits():
+    scheduler = BudgetScheduler(chat_concurrency=2)
+    assert scheduler._chat.active == 0
+    assert scheduler._chat.available == 2
+
+    scheduler.configure(chat_concurrency=1)
+
+    assert scheduler.chat_capacity == 1
+    assert scheduler._chat.capacity == 1
+    assert scheduler._chat.active == 0
+    assert scheduler._chat._value == 1
+
+
+@pytest.mark.asyncio
+async def test_lowering_active_chat_capacity_keeps_holders_without_leaking_permits():
+    scheduler = BudgetScheduler(chat_concurrency=2)
+    entered = [asyncio.Event() for _ in range(2)]
+    release = asyncio.Event()
+
+    async def holder(index):
+        assert await scheduler.admit_pipeline(Event(f"scope-{index}"))
+        entered[index].set()
+        await release.wait()
+
+    owners = [asyncio.create_task(holder(index)) for index in range(2)]
+    await asyncio.gather(*(event.wait() for event in entered))
+    assert scheduler._chat.active == 2
+
+    scheduler.configure(chat_concurrency=1)
+    assert scheduler.chat_capacity == 1
+    assert scheduler._chat.active == 2
+    assert scheduler._chat.available == 0
+
+    release.set()
+    await asyncio.gather(*owners)
+    assert scheduler._chat.active == 0
+    assert scheduler._chat.available == 1
+
+
+@pytest.mark.asyncio
+async def test_queued_chat_waiters_survive_raise_and_lower_in_one_pool():
+    scheduler = BudgetScheduler(chat_concurrency=1, queue_limit=10, wait_seconds=10)
+    first_entered = asyncio.Event()
+    release_first = asyncio.Event()
+    release_waiters = asyncio.Event()
+    entered = []
+
+    async def holder(index):
+        assert await scheduler.admit_pipeline(Event(f"scope-{index}"))
+        entered.append(index)
+        if index == 0:
+            first_entered.set()
+            await release_first.wait()
+        else:
+            await release_waiters.wait()
+
+    owner = asyncio.create_task(holder(0))
+    await first_entered.wait()
+    waiters = [asyncio.create_task(holder(index)) for index in (1, 2, 3)]
+    await asyncio.sleep(.02)
+    assert scheduler._chat.waiting == 3
+
+    scheduler.configure(chat_concurrency=4)
+    await asyncio.sleep(.02)
+    assert scheduler._chat.active == 4
+    assert scheduler._chat.waiting == 0
+    assert entered == [0, 1, 2, 3]
+
+    scheduler.configure(chat_concurrency=2)
+    assert scheduler._chat.active == 4
+    assert scheduler._chat.capacity == 2
+    release_first.set()
+    await owner
+    release_waiters.set()
+    await asyncio.gather(*waiters)
+    assert scheduler._chat.active == 0
+    assert scheduler._chat.available == 2
+
+
+@pytest.mark.asyncio
+async def test_cancelled_and_timed_out_waiters_do_not_leave_phantom_permits():
+    scheduler = BudgetScheduler(chat_concurrency=1, wait_seconds=.01)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def holder():
+        assert await scheduler.admit_pipeline(Event("owner"))
+        entered.set()
+        await release.wait()
+
+    owner = asyncio.create_task(holder())
+    await entered.wait()
+    cancelled = asyncio.create_task(scheduler.admit_pipeline(Event("cancelled")))
+    await asyncio.sleep(.01)
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    assert not await scheduler.admit_pipeline(Event("timeout"))
+    assert scheduler._chat.waiting == 0
+    assert scheduler._chat.active == 1
+
+    release.set()
+    await owner
+    assert scheduler._chat.active == 0
+    assert scheduler._chat.available == 1
+
+
+@pytest.mark.asyncio
+async def test_configure_lower_then_raise_does_not_add_concurrency_to_active_pool():
+    scheduler = BudgetScheduler(media_concurrency=2)
+    entered = []
+    release = asyncio.Event()
+
+    owner_entered = asyncio.Event()
+
+    async def holder(index):
+        async with scheduler.media():
+            entered.append(index)
+            if index == 0:
+                owner_entered.set()
+                await release.wait()
+            else:
+                await asyncio.Event().wait()
+
+    owners = [asyncio.create_task(holder(index)) for index in range(2)]
+    await owner_entered.wait()
+    for _ in range(20):
+        if scheduler._media.active == 2:
+            break
+        await asyncio.sleep(0)
+    assert scheduler._media.active == 2
+
+    scheduler.configure(media_concurrency=1)
+    assert scheduler._media.capacity == 1
+    assert scheduler._media.active == 2
+    scheduler.configure(media_concurrency=2)
+    assert scheduler._media.capacity == 2
+    assert scheduler._media.active == 2
+    assert scheduler._media.available == 0
+
+    release.set()
+    await owners[0]
+    for owner in owners[1:]:
+        owner.cancel()
+    await asyncio.gather(*owners[1:], return_exceptions=True)
+    assert scheduler._media.active == 0
+    assert scheduler._media.available == 2
+
+
+@pytest.mark.asyncio
+async def test_close_with_queued_chat_waiters_does_not_deadlock_or_double_release():
+    scheduler = BudgetScheduler(chat_concurrency=1, queue_limit=10, wait_seconds=10)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def holder():
+        assert await scheduler.admit_pipeline(Event("owner"))
+        entered.set()
+        await release.wait()
+
+    owner = asyncio.create_task(holder())
+    await entered.wait()
+    waiters = [asyncio.create_task(scheduler.admit_pipeline(Event(f"waiter-{index}"))) for index in range(3)]
+    await asyncio.sleep(.02)
+    assert scheduler._chat.waiting == 3
+
+    scheduler.configure(chat_concurrency=2)
+    await asyncio.sleep(.02)
+
+    await asyncio.wait_for(scheduler.close(), timeout=1)
+    assert all(waiter.done() for waiter in waiters)
+    results = [waiter.result() for waiter in waiters]
+    release.set()
+    await owner
+    assert all(results)
+    assert scheduler._chat.active == 0
+    assert scheduler._chat.available == 2
 
 
 async def _media_wait(scheduler):

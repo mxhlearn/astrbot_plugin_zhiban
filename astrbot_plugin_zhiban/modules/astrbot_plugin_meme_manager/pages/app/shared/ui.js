@@ -400,11 +400,10 @@ function bindEmbeddedNavLink(link) {
       link.hasAttribute("download")
     )
       return;
-    // In the sandboxed shell this handler must own every known navigation,
-    // including script URLs and malformed targets. Otherwise the browser
-    // would execute or navigate before the delegated bridge click handler.
     event.preventDefault();
-    navigateModuleTarget(target);
+    if (!navigateModuleTarget(target)) {
+      zhibanModule.navigate(target);
+    }
   });
 }
 async function applySecureNavLinks() {

@@ -234,7 +234,7 @@ class BuildViewsTests(unittest.TestCase):
         root = Path(__file__).parents[1] / "astrbot_plugin_zhiban"
         app = (root / "views" / "知伴" / "app.js").read_text(encoding="utf-8")
         bridge = (root / "views" / "知伴" / "module_bridge.js").read_text(encoding="utf-8")
-        self.assertIn("window.addEventListener('click'", bridge)
+        self.assertIn("document.addEventListener('click'", bridge)
         qzone = (
             root
             / "modules"
@@ -499,6 +499,18 @@ class BuildViewsTests(unittest.TestCase):
             self.assertLess(page.index("/api/plugin/page/bridge-sdk.js"), page.index(BRIDGE_FILENAME))
             self.assertLess(page.index(BRIDGE_FILENAME), page.index('src="./app.js"'))
             self.assertIn("window.testPage = true;", (view_root / "modules" / "meme" / "app.js").read_text(encoding="utf-8"))
+
+    def test_navigation_ownership_is_single_and_fails_closed(self):
+        module_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "module_bridge.js").read_text(encoding="utf-8")
+        host_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "host_bridge.js").read_text(encoding="utf-8")
+        ui_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "modules" / "astrbot_plugin_meme_manager" / "pages" / "app" / "shared" / "ui.js").read_text(encoding="utf-8")
+        self.assertNotIn("stopImmediatePropagation()", module_source)
+        self.assertIn("document.addEventListener('click'", module_source)
+        self.assertIn("data-zhiban-nav-bound", module_source)
+        self.assertIn("message.token === state.appReadyToken", host_source)
+        self.assertIn("!state.appReady && message.token === frame.dataset.appReadyToken", host_source)
+        self.assertIn("if (!navigateModuleTarget(target)) {", ui_source)
+        self.assertIn("zhibanModule.navigate(target);", ui_source)
 
     def test_failure_message_from_installed_emoji_navigation_is_regression_covered(self):
         host_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "host_bridge.js").read_text(encoding="utf-8")

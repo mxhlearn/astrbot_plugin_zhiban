@@ -160,29 +160,20 @@
 
   function installRouteBridge() {
     if (!embedded) return;
-    // Use window capture rather than document capture: module pages can be
-    // mounted in a sandboxed srcdoc where the document listener can be skipped
-    // by host-level event interception. The window remains the common target.
-    window.addEventListener('click', (event) => {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const control = event.target?.closest?.('a[data-module-target], a[data-nav-target], button[data-module-target]');
-      if (!control || control.target === '_blank' || control.hasAttribute('download')) return;
-      const target = control.dataset.moduleTarget || control.dataset.navTarget || control.getAttribute('href') || '';
+    // The bridge owns only the fallback path. Module pages that bind their own
+    // controls call ZhibanModule.navigate directly; intercepting those clicks
+    // here would consume them twice and could swallow a failed navigation.
+    document.addEventListener('click', (event) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const control = event.target?.closest?.('a[data-zhiban-nav-bound], button[data-zhiban-nav-bound]');
+      if (control) return;
+      const link = event.target?.closest?.('a[href], button[data-module-target]');
+      if (!link || link.target === '_blank' || link.hasAttribute('download')) return;
+      const target = link.dataset.moduleTarget || link.getAttribute('href') || '';
       const route = resolveModuleTarget(target);
       if (!route || !(route.path.endsWith('.html') || route.path.endsWith('/'))) return;
       event.preventDefault();
-      event.stopImmediatePropagation();
       navigateModule(target);
-    }, true);
-    // Run in the bubble phase: page scripts get the first chance to handle a
-    // deliberate navigation, but a link can never escape the sandbox by
-    // letting the iframe perform its own top-level navigation.
-    document.addEventListener('click', (event) => {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const link = event.target?.closest?.('a[href]');
-      if (!routeFromLink(link)) return;
-      event.preventDefault();
-      navigateModule(link.getAttribute('href'));
     });
     const applyHash = () => {
       const hash = moduleContext(context).subpageHash;

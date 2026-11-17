@@ -341,10 +341,12 @@
     const message = event.data;
     if (!message || message.channel !== CHANNEL) return;
     function trustedInstanceMessage(message) {
-      return message?.module === state.module
-        && typeof message.token === "string"
-        && message.token.length > 0
-        && message.token === state.appReadyToken;
+      if (message?.module !== state.module) return false;
+      if (typeof message.token !== "string" || message.token.length === 0) return false;
+      if (message.token === state.appReadyToken) return true;
+      // A child that can prove it owns this exact frame may navigate before
+      // app-ready; after app-ready the token remains the sole instance proof.
+      return !state.appReady && message.token === frame.dataset.appReadyToken;
     }
 
     if (message.kind === "app:ready") {
