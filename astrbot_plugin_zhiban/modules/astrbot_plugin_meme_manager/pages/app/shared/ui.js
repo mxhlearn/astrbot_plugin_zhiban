@@ -390,7 +390,6 @@ function bindEmbeddedNavLink(link) {
     link.dataset.zhibanSubpage = subpageForTarget(target);
   link.addEventListener("click", (event) => {
     if (
-      event.defaultPrevented ||
       event.button !== 0 ||
       event.metaKey ||
       event.ctrlKey ||
@@ -401,9 +400,7 @@ function bindEmbeddedNavLink(link) {
     )
       return;
     event.preventDefault();
-    if (!navigateModuleTarget(target)) {
-      zhibanModule.navigate(target);
-    }
+    zhibanModule.navigate(target);
   });
 }
 async function applySecureNavLinks() {

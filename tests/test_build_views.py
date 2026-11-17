@@ -509,8 +509,8 @@ class BuildViewsTests(unittest.TestCase):
         self.assertIn("data-zhiban-nav-bound", module_source)
         self.assertIn("message.token === state.appReadyToken", host_source)
         self.assertIn("!state.appReady && message.token === frame.dataset.appReadyToken", host_source)
-        self.assertIn("if (!navigateModuleTarget(target)) {", ui_source)
         self.assertIn("zhibanModule.navigate(target);", ui_source)
+        self.assertNotIn("if (!navigateModuleTarget(target)) {", ui_source)
 
     def test_failure_message_from_installed_emoji_navigation_is_regression_covered(self):
         host_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "host_bridge.js").read_text(encoding="utf-8")
