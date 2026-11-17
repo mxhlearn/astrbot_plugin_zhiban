@@ -28,9 +28,7 @@ def test_readmes_link_languages_and_project_resources() -> None:
         "LICENSE",
         "/releases",
         "/issues",
-        "qm.qq.com",
-        "953000001",
-        "112000001",
+        "github.com/lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory",
         "`REDACTED`",
         "astrbot_plugin_livingmemory",
     )
@@ -41,6 +39,8 @@ def test_readmes_link_languages_and_project_resources() -> None:
                 assert language_link in content
         for link in required:
             assert link in content, f"{name} is missing {link}"
+        assert "qm.qq.com/cgi-bin/qm/qr" not in content
+        assert "authKey=" not in content
 
 
 def test_readme_local_images_exist() -> None:

@@ -5,12 +5,12 @@
 </p>
 
 <p align="center">
-  <strong>十个业务模块，一个知伴。</strong><br>
+  <strong>十一个业务模块，一个知伴。</strong><br>
   面向 AstrBot 与 OneBot v11 的浅绿色中文整合应用。
 </p>
 
 <p align="center">
-  <a href="#安装与切换"><img alt="Version" src="https://img.shields.io/badge/version-0.3.4-2f6b4f?style=flat-square"></a>
+  <a href="#安装与切换"><img alt="Version" src="https://img.shields.io/badge/version-0.3.5-2f6b4f?style=flat-square"></a>
   <a href="#兼容范围"><img alt="AstrBot" src="https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square"></a>
   <a href="#兼容范围"><img alt="OneBot" src="https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square"></a>
   <a href="#质量与验证"><img alt="Tests" src="https://img.shields.io/badge/tests-1721%20Python%20%2B%20139%20Node-2f6b4f?style=flat-square"></a>
@@ -24,12 +24,12 @@
 
 整合层负责四件事：
 
-1. 统一十个模块的加载、重载、冲突检查和资源清理。
+1. 统一十一个模块的加载、重载、冲突检查和资源清理。
 2. 用五个稳定入口组织功能，统一状态与配置体验。
 3. 在 AstrBot 鉴权下代理模块 API，保护密钥与配置版本冲突。
 4. 以经过清单管理的浅绿色主题和轻量导航适配上游页面。
 
-> `0.3.4` 重排记忆成长工作台并移除独立外观入口，统一图片创作与知伴浅绿主题；修复宿主主题向工作台传播、QQ 动态过早放弃桥接的问题，并补齐多视口回归。
+> `0.3.5` 新增有界私聊 draft-window 回复防抖与 Anysearch 联网搜索模块；移除自研静默合并，群聊继续由聊天互动原生防抖协调。万能解析器因官方来源无法核验暂不纳入。
 
 ## 界面与导航
 
@@ -52,11 +52,12 @@
 - 1440、1024、768、390 px 已完成主外壳、记忆成长与图片创作的视觉和横向溢出回归；其余工作台完成登录态进入与配置检查。
 - 不支持或用户选择减少动态效果时，跨文档过渡自动关闭。
 
-## 十个运行模块
+## 十一个运行模块
 
 | 模块 | 主要能力 | 页面 / 运行方式 |
 | --- | --- | --- |
 | 聊天互动（2.2.13） | 群聊接话、唤醒、上下文、私聊处理 | 天使之心页面 |
+| 联网搜索（v0.3） | Anysearch 实时搜索、公开网页正文提取 | 有界联网页面、命令与可选 LLM 工具 |
 | 记忆成长（2.8.2） | LivingMemory 长期记忆、知识图谱、人格审批 | LivingMemory 页面与知伴审批库 |
 | 表情互动（5.3.5） | 服务器图库、分类、发送、语义检索 | 表情包管理页面 |
 | 语音回复（1.3.1） | BreezeBlue TTS、音色、语速、概率 | 语音设置页面 |
@@ -95,7 +96,7 @@ LivingMemory 是唯一长期记忆模块。AngelMemory 和内容/链接过滤不
 3. 停用独立同源业务插件，避免处理器、LLM 工具或后台任务重复注册。
 4. 启用知伴并重载 AstrBot。
 5. 打开 `扩展功能 → 知伴`。
-6. 在 `总览 → 全局设置` 检查十个模块，再按功能页配置外部服务。
+6. 在 `总览 → 全局设置` 检查十一个模块，再按功能页配置外部服务。
 7. 发送 `/知伴 菜单` 和 `/知伴 状态` 验证运行。
 
 ### 回退
@@ -126,7 +127,7 @@ LivingMemory 是唯一长期记忆模块。AngelMemory 和内容/链接过滤不
 - 密钥字段只返回是否配置，不返回原值。
 - 留空保持原密钥，清除必须显式选择并保存。
 - 草稿中的敏感信息不写入浏览器存储。
-- 模块启停和跨模块资源预算只在全局设置编辑；聊天行为（连续消息合并）放在“聊天系统 → 聊天互动 → 配置”，业务参数保留在各自页面。
+- 模块启停和跨模块资源预算只在全局设置编辑；聊天行为（回复防抖）放在“聊天系统 → 聊天互动 → 配置”，业务参数保留在各自页面。
 
 数据目录：
 
@@ -177,21 +178,21 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 
 ## 质量与验证
 
-知伴 0.3.4 的验证范围：
+知伴 0.3.5 的验证范围：
 
-- **Python**：2,911 项测试通过（根测试 170 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187），7 项跳过，另有 125 个子测试通过（根 32 + 表情 93）。
+- **Python**：2,955 项测试通过（根测试 186 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28），7 项跳过，另有 127 个子测试通过（根 34 + 表情 93）。
 - **Node**：139 项测试通过（根桥接/前端 45 + 表情前端 94）。
 - **构建**：资源清单、ZIP 和 SHA-256 校验流程可用；具体文件数以构建产物为准。
 - **统计口径**：知伴 Token 仅计知伴可识别的 Provider 最终响应；AstrBot 全局 Token 来自只读 `provider_stats`，包含非知伴调用，两者不混算；缺 usage 显示“未统计/暂无”，不伪报 0。
-- **页面**：登录态下检查五入口、总览、全局设置、十个模块入口和配置页。
+- **页面**：登录态下检查五入口、总览、全局设置、十一个模块入口和配置页。
 - **响应式**：1440/1024/768/390 px 的主外壳、记忆成长与图片创作通过；模块配置页在登录态下可打开。
 - **竞态**：快速并发切换停留在最后目标，没有旧页面覆盖。
 - **主题**：主应用浅色/深色切换即时传递到记忆成长和图片创作；两页均无独立外观入口或旧本地缓存。
 - **切换**：20 次一级入口往返后仅保留 1 个工作台 frame，无串页；浏览器 HTML 缓存按 LRU/字节上限验收，不作 JS heap 或 RSS 等量证明。
 - **同负载观测**：本机旧/新安装态各 20 轮一级切换约 20.0s / 19.8s；宿主重启后的 Private/WorkingSet 为约 3.157/0.571 GB 与 3.193/0.608 GB，未证明进程 RSS 降低。浏览器顶层 Performance 指标受宿主 frame 边界限制，不能代表 iframe 内部 JS heap。
 - **加载体验**：同一模块路由复用已就绪 frame；模块 HTML 使用 30 秒内、最多 6 条且估算不超过 2 MiB（单条 512 KiB）的浏览器内存缓存；UTF-8 字节为估算，不等同 JS heap。过期项由低频维护清理，进入分组后仅串行预取可见分组的受认证 HTML，最多 1 个请求在途，离开页面/分组或节省流量时取消；父加载条在 iframe 插入后移除，刷新/应用/失败会失效。
-- **消息合并**：默认开启；同一会话同一发送者的连续纯文本按约 1.5 秒静默窗口合并，最长 5 秒，单批最多 8 条/2,000 字；命令、@、引用、媒体和 AngelHeart 已防抖的群聊事件不重复合并。 这里只合并进入模型准入前的连续补充；已经开始的模型生成由 AstrBot 自身的 active-run/follow-up 机制处理，知伴不另开第二条生成。
-- **资源预算**：聊天、媒体、后台维护默认各 1 个并发，媒体与后台共享重资源预算；模块启动/清理、TTS 合成、图片生成/编辑、音乐交付、QQ 空间 daemon 启停已接入。记忆衰减/整合/备份、FAISS 实际写盘、索引重建，以及表情描述、向量生成、语义检索和自动收集重建只在真实重任务区间取维护票；空闲等待、防抖窗口和轻量轮询不持票。其他模块的非重轮询和未被识别为资源密集的定时任务仍按上游实现运行，不宣称全部后台任务已纳入。
+- **回复防抖**：采用 `reply_merge` 1.4.2 的 draft-window 机制替换此前自研静默合并。当前仅接管私聊，群聊继续由聊天互动（AngelHeart）唯一负责，避免双层防抖。每窗口默认最多 4 轮草稿调用、8 条补充、16 KiB 文本和 30 秒；无标记/超时退回等待，不丢弃正常最终回复。草稿只用于专用控制标记判断与最终提示词注入，不写入长期记忆或作为聊天内容展示；流式回复已经发出的片段无法撤回。草稿调用会产生额外 Provider 费用，并与最终回复分别计量。
+- **资源预算**：聊天、媒体、后台维护默认各 1 个并发，媒体与后台共享重资源预算；模块启动/清理、TTS 合成、图片生成/编辑、音乐交付、QQ 空间 daemon 启停已接入。记忆衰减/整合/备份、FAISS 实际写盘、索引重建，以及表情描述、向量生成、语义检索和自动收集重建只在真实重任务区间取维护票；空闲等待、防抖窗口和轻量轮询不持票。其他模块的非重轮询和未被识别为资源密集的定时任务仍按上游实现运行，不宣称全部后台任务已纳入。 Anysearch 搜索/正文提取默认并发 2、请求超时 20 秒、单响应 1 MiB、文本缓存 120 秒且最多 64 条/2 MiB；缺 API Key 显示未配置且不发起请求。
 - **安全**：密钥脱敏、版本冲突、显式清除、保存/应用状态均有回归。
 - **未执行**：真实 QQ 空间发布、真实联系人消息、付费图片/语音生成、真实资料修改。
 
@@ -213,12 +214,12 @@ AstrBot 4.29.3 的插件页面使用 `allow-scripts allow-forms allow-downloads`
 
 ## AI 辅助开发
 
-本项目在开发过程中使用 AI 编程工具辅助完成代码审阅、实现、回归测试、构建验证与文档整理，主要模型分工如下：
+本项目开发使用了 AI 编程助手，主要模型及大致作用如下：
 
-- **GPT-6 Astra**：承担导航/配置/统计等跨模块架构与复杂调用链审阅，协助定位生命周期、资源预算和安装态问题。
-- **DeepSeek V4.1 Flash**：承担连续消息合并、缓存与调度实现，执行定向/全量测试、构建、安装同步及实机复验。
+- **GPT-6 Astra**：用于跨模块架构梳理、复杂调用链与生命周期/资源预算审阅，以及导航、统计和安装态问题的诊断与验收方案。
+- **DeepSeek V4.1 Flash**：用于回复防抖、Anysearch 联网搜索、缓存与调度等代码实现，并执行定向/全量测试、构建、安装同步和实机页面复验。
 
-模型名称仅说明开发过程；AstrBot 运行时使用部署者自行配置的 Provider，与上述 AI 开发工具相互独立。AI 输出均经过测试、构建和人工审查，不构成生产环境的绝对保证。
+模型名称仅说明开发过程；AstrBot 运行时使用部署者自行配置的 Provider，与上述开发工具相互独立。AI 输出经过测试、构建和项目所有者审查，但不构成生产环境的保证。
 
 ## 开发模式
 
@@ -262,6 +263,8 @@ python package_release.py
 | --- | --- | --- | --- |
 | 聊天互动（2.2.13） | [kawayiYokami/astrbot_plugin_angel_heart](https://github.com/kawayiYokami/astrbot_plugin_angel_heart) | 天使之心聊天流程和页面 | AGPL v3 |
 | 记忆成长（2.8.2） | [lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory](https://github.com/lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory) | LivingMemory 页面、长期记忆和检索 | AGPL v3 |
+| 联网搜索（v0.3） | [AgIzT/astrbot_plugin_anysearch](https://github.com/AgIzT/astrbot_plugin_anysearch) | 实时搜索、公开网页正文提取与有界联网工具 | MIT |
+| 回复防抖（1.4.2） | [Ye1xiaotian/astrbot_plugin_reply_merge](https://github.com/Ye1xiaotian/astrbot_plugin_reply_merge) | 私聊 draft-window 防抖与最终提示词注入 | MIT |
 | 表情互动（5.3.5） | [anka-afk/astrbot_plugin_meme_manager](https://github.com/anka-afk/astrbot_plugin_meme_manager) | 图库、语义检索和发送 | MIT |
 | 语音回复（1.3.1） | [hangdingding/AstrBot-breezetts](https://github.com/hangdingding/AstrBot-breezetts) | BreezeBlue TTS | 未发现 LICENSE，待核实 |
 | 主动问候（v1.3.0-beta.1） | [Pancakes-Labs/astrbot_plugin_proactive_chat](https://github.com/Pancakes-Labs/astrbot_plugin_proactive_chat) | 私聊问候与持久化任务 | AGPL v3 |
@@ -277,7 +280,7 @@ python package_release.py
 - 上述业务项目的原有功能结构、页面语义和业务工作流；知伴不宣称原创它们。
 - 五个一级入口、统一状态、配置安全、浅绿色设计系统、受控主题适配与页面切换属于知伴整合层。
 
-许可证缺失或声明冲突不代表获得公开再分发授权。当前混合许可证项目在公开发布、商业部署或再次分发前需进一步审查；“私有验证”和“打包成功”不替代许可确认。本说明不是法律意见。
+本仓库已公开，但其中整合了多个上游项目，许可证状态包含 AGPL v3、MIT、缺失与待澄清项。使用、再分发或商业部署前，请按各模块 `metadata.yaml` 与随附许可证逐项核实；公开可见不等于额外授权。本说明不是法律意见。
 
 ## 项目结构
 
@@ -290,7 +293,7 @@ astrbot_plugin_zhiban/
   scheduling.py           聊天队列和媒体串行
   memory_control.py       人格建议审批
   views/知伴/             侧栏应用、配置和桥接
-  modules/                十个运行模块、资源和许可证
+  modules/                十一个运行模块、资源和许可证
   _conf_schema.json       配置 schema
   metadata.yaml           版本、平台与宿主兼容范围
 tests/                    生命周期、配置、桥接、资源和状态回归
@@ -298,3 +301,6 @@ build_schema.py           汇总 schema
 build_views.py            生成页面与适配清单
 package_release.py        ZIP、哈希与发布文件清单
 ~~~~
+
+
+> **万能解析器状态**：原候选 `Zhalslar/astrbot_plugin_parser` 与账号当前均返回 404；GitHub 搜索只出现无法确认归属的第三方同名仓库，因此本版本未安装或部署解析器，也未从教程或陌生镜像执行脚本。待可信上游地址、维护归属和许可证明确后再单独验收。

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import inspect
 import json
 import time
 from pathlib import Path
@@ -15,7 +16,7 @@ from astrbot.api.star import Context, Star, StarTools
 from astrbot.api.web import request as plugin_request
 
 from .catalog import MODULES, ordered_modules
-from .coalescing import MessageCoalescer
+from .reply_debounce import ReplyDebounceCoordinator
 from .scheduling import BudgetScheduler
 from .ui_assets import MODULE_UI_ROOTS, resolve_module_ui_asset
 from .module_api import module_api_target
@@ -51,12 +52,11 @@ class ZhibanPlugin(Star):
             media_queue_limit=management.get("media_queue_limit", 8),
             maintenance_queue_limit=management.get("maintenance_queue_limit", 8),
         )
-        rhythm = self._reply_rhythm_config()
-        self.coalescer = MessageCoalescer(
-            quiet_seconds=rhythm["coalesce_quiet_ms"] / 1000,
-            max_seconds=rhythm["coalesce_max_ms"] / 1000,
-            max_messages=rhythm["coalesce_max_messages"],
-            max_chars=rhythm["coalesce_max_chars"],
+        self.reply_debounce = ReplyDebounceCoordinator(
+            context,
+            config=self._reply_debounce_config(),
+            usage_recorder=self.usage.record_event,
+            style_provider=self._reply_debounce_style,
         )
         self.host = None
         self.persona = None
@@ -205,7 +205,7 @@ class ZhibanPlugin(Star):
             "schema": management_schema,
             "revision": snapshot["revision"],
             "scheduler": self.scheduler.status(),
-            **({"coalescing": self.coalescer.status()} if getattr(self, "coalescer", None) is not None else {}),
+            **({"reply_debounce": self.reply_debounce.status()} if getattr(self, "reply_debounce", None) is not None else {}),
             "modules": module_rows,
         }
 
@@ -389,6 +389,16 @@ class ZhibanPlugin(Star):
             return {"state": "unknown", "label": "未检测", "detail": "没有可用的运行实例"}
 
         instance = self.host.instances.get(key)
+        readiness_checker = getattr(instance, "module_readiness", None)
+        if callable(readiness_checker):
+            try:
+                readiness = readiness_checker()
+                if inspect.isawaitable(readiness):
+                    readiness = await readiness
+                if isinstance(readiness, dict) and readiness.get("state"):
+                    return readiness
+            except Exception:
+                pass
         if key == "memory":
             initializer = getattr(instance, "initializer", None)
             if getattr(initializer, "is_failed", False):
@@ -481,7 +491,7 @@ class ZhibanPlugin(Star):
                 "modules": modules,
                 "menu_order": [item["key"] for item in ordered_modules(menu_order)],
                 "scheduler": self.scheduler.status(),
-                **({"coalescing": self.coalescer.status()} if getattr(self, "coalescer", None) is not None else {}),
+                **({"reply_debounce": self.reply_debounce.status()} if getattr(self, "reply_debounce", None) is not None else {}),
             },
         }
 
@@ -715,38 +725,59 @@ class ZhibanPlugin(Star):
             headers["Cache-Control"] = "no-store, max-age=0"
         return FileResponse(path, headers=headers)
 
-    def _reply_rhythm_config(self) -> dict:
-        """Read chat behavior from 聊天互动; retain old global fields only as fallback."""
+    def _reply_debounce_config(self) -> dict:
+        """Read private-chat reply debounce from 聊天互动; never from global settings."""
         heart = self.config.get("heart", {}) if isinstance(self.config, dict) else {}
         settings = heart.get("settings", {}) if isinstance(heart, dict) else {}
-        rhythm = settings.get("reply_rhythm", {}) if isinstance(settings, dict) else {}
-        management = self.config.get("management", {}) if isinstance(self.config, dict) else {}
-        if not isinstance(rhythm, dict):
-            rhythm = {}
-        if not isinstance(management, dict):
-            management = {}
-
-        def pick(name: str, default):
-            value = rhythm.get(name)
-            if value is None:
-                value = management.get(name, default)
-            return value
-
-        def integer(name: str, default: int, low: int, high: int) -> int:
-            try:
-                value = int(pick(name, default))
-            except (TypeError, ValueError):
-                value = default
-            return max(low, min(high, value))
-
-        enabled = pick("coalesce_enabled", True)
+        raw = settings.get("reply_debounce", {}) if isinstance(settings, dict) else {}
+        if not isinstance(raw, dict):
+            raw = {}
         return {
-            "coalesce_enabled": bool(enabled),
-            "coalesce_quiet_ms": integer("coalesce_quiet_ms", 1500, 200, 5000),
-            "coalesce_max_ms": integer("coalesce_max_ms", 5000, 1000, 15000),
-            "coalesce_max_messages": integer("coalesce_max_messages", 8, 2, 20),
-            "coalesce_max_chars": integer("coalesce_max_chars", 2000, 200, 8000),
+            "enabled": self._safe_bool(raw.get("enabled"), True),
+            "thinking": self._safe_bool(
+                raw.get("enable_thinking", raw.get("thinking")), True
+            ),
+            "think_provider_id": str(raw.get("think_provider_id") or "").strip(),
+            "think_style": str(raw.get("think_style") or "").strip(),
+            "think_context": self._safe_bool(raw.get("think_context"), True),
+            "think_context_chars": raw.get("think_context_chars", 4000),
+            "think_voice": str(raw.get("think_voice") or "human").strip().lower(),
+            "min_wait": raw.get("min_wait", 3),
+            "max_wait": raw.get("max_wait", 8),
+            "max_window": raw.get("max_window", 30),
+            "max_passes": raw.get("max_passes", 4),
+            "max_followups": raw.get("max_followups", 8),
+            "max_chars": raw.get("max_chars", 16384),
+            "max_bytes": raw.get("max_bytes", 16384),
+            "forward_images": self._safe_bool(raw.get("forward_images"), True),
+            "draft_concurrency": raw.get("draft_concurrency", 1),
         }
+
+    async def _reply_debounce_style(self, event: AstrMessageEvent) -> str:
+        """Use the approved persona as the draft voice when no override is set."""
+
+        persona = getattr(self, "persona", None)
+        if persona is None:
+            return ""
+        try:
+            from .memory_control import scope_for_event
+
+            text = await persona.approved_text(scope_for_event(event))
+            return str(text or "").strip()[:2000]
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _safe_bool(value, default: bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            text = value.strip().lower()
+            if text in {"1", "true", "yes", "on", "启用", "开启"}:
+                return True
+            if text in {"0", "false", "no", "off", "禁用", "关闭"}:
+                return False
+        return bool(default if value is None else value)
 
     @staticmethod
     def _safe_management_value(value, default, low, high, *, integer=False, floating=False):
@@ -774,79 +805,30 @@ class ZhibanPlugin(Star):
             maintenance_queue_limit=self._safe_management_value(management.get("maintenance_queue_limit"), 8, 1, 32),
         )
 
-        rhythm = self._reply_rhythm_config()
-        coalescer = getattr(self, "coalescer", None)
-        if coalescer is not None:
-            coalescer.quiet_seconds = rhythm["coalesce_quiet_ms"] / 1000
-            coalescer.max_seconds = max(coalescer.quiet_seconds, rhythm["coalesce_max_ms"] / 1000)
-            coalescer.max_messages = rhythm["coalesce_max_messages"]
-            coalescer.max_chars = rhythm["coalesce_max_chars"]
-
-    def _coalesce_key(self, event: AstrMessageEvent) -> str:
-        try:
-            sender = str(event.get_sender_id() or "")
-        except Exception:
-            sender = ""
-        return f"{event.unified_msg_origin}|{sender}"
-
-    def _coalesce_eligible(self, event: AstrMessageEvent) -> bool:
-        if not self._reply_rhythm_config()["coalesce_enabled"]:
-            return False
-        try:
-            if not event.is_private_chat() and event.get_extra("angelheart_debounce_kind"):
-                return False
-        except Exception:
-            pass
-        text = str(getattr(event, "message_str", "") or "").strip()
-        if not text or text[0] in "/!#." or text.startswith("知伴"):
-            return False
-        try:
-            if not event.is_private_chat() and getattr(event, "is_at_or_wake_command", False):
-                return False
-            chain = getattr(event.message_obj, "message", None) or []
-            from astrbot.core.message.components import Plain
-            if not chain or any(not isinstance(component, Plain) for component in chain):
-                return False
-        except Exception:
-            return False
-        return True
-
-    def _apply_coalesced_text(self, event: AstrMessageEvent, merged: str, ids: list[str]) -> None:
-        original = str(getattr(event, "message_str", "") or "")
-        if not merged or merged == original:
-            return
-        event.message_str = merged
-        try:
-            from astrbot.core.message.components import Plain
-            event.message_obj.message = [Plain(merged)]
-        except Exception:
-            pass
-        try:
-            event.set_extra("_zhiban_coalesced_count", len(ids))
-            event.set_extra("_zhiban_coalesced_ids", ids[-8:])
-        except Exception:
-            pass
+        reply_debounce = getattr(self, "reply_debounce", None)
+        if reply_debounce is not None:
+            reply_debounce.configure(**self._reply_debounce_config())
 
     @filter.on_waiting_llm_request(priority=1000000)
     async def admit(self, event: AstrMessageEvent):
-        if self._coalesce_eligible(event):
-            leader, merged, ids = await self.coalescer.join(
-                self._coalesce_key(event),
-                str(getattr(event, "message_str", "") or ""),
-                str(getattr(getattr(event, "message_obj", None), "message_id", "") or ""),
-            )
-            if not leader:
-                event.stop_event()
-                return
-            self._apply_coalesced_text(event, merged, ids)
-        admitted = await self.scheduler.admit_pipeline(event)
+        async def admit_pipeline(candidate):
+            return await self.scheduler.admit_pipeline(candidate)
+
+        admitted = await self.reply_debounce.hold(event, admit_pipeline)
         if admitted:
             try:
                 event.set_extra("_zhiban_usage_admitted", True)
             except Exception:
                 pass
         else:
-            self.logger.info("知伴：请求因队列限制或停止状态未进入模型流程")
+            self.logger.info("知伴：请求被回复协调器停止，或因队列限制未进入模型流程")
+
+    @filter.on_llm_request(priority=40)
+    async def merge_reply_request(self, event, req):
+        """Inject the finished draft window after AngelHeart and before persona."""
+        continued = await self.reply_debounce.merge_request(event, req)
+        if not continued:
+            event.stop_event()
 
     @filter.on_llm_response()
     async def record_llm_usage(self, event, response):
@@ -902,7 +884,7 @@ class ZhibanPlugin(Star):
             event.stop_event()
             return
         if action == "状态":
-            report = {"调度": self.scheduler.status(), "消息合并": self.coalescer.status(), "模块": self.host.status() if self.host else {}}
+            report = {"调度": self.scheduler.status(), "回复防抖": self.reply_debounce.status(), "模块": self.host.status() if self.host else {}}
             yield event.plain_result(json.dumps(report, ensure_ascii=False, indent=2))
         elif action in ("人格建议", "批准", "拒绝", "回滚"):
             if self.persona is None:
@@ -928,7 +910,7 @@ class ZhibanPlugin(Star):
         event.stop_event()
 
     async def terminate(self):
-        await self.coalescer.close()
+        await self.reply_debounce.close()
         # Shut down hosted modules while their maintenance tickets can still be
         # acquired; close the scheduler only after module resources are released.
         try:

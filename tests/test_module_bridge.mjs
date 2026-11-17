@@ -118,6 +118,19 @@ test("sandboxed module gets a self-contained bridge without the official SDK", a
   assert.equal(bridge.calls.length, 0);
 });
 
+test("search module bridge maps status to the Anysearch module API scope", async () => {
+  const bridge = await createBridge("search");
+  const { context } = await answerReady(bridge);
+  assert.equal(context.pluginName, "astrbot_plugin_anysearch");
+  const pending = bridge.bridge.apiGet("status", {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const post = bridge.posts.at(-1);
+  assert.equal(post.message.action, "api:get");
+  assert.equal(post.message.endpoint, "status");
+  bridge.sendFromHost({ kind: "response", requestId: post.message.requestId, ok: true, data: { configured: false } });
+  assert.deepEqual(await pending, { configured: false });
+});
+
 test("host context applies the shared dark palette before module mount", async () => {
   const bridge = await createBridge("memory");
   const ready = bridge.bridge.ready();

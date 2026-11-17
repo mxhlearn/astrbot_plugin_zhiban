@@ -54,7 +54,7 @@ class BuildViewsTests(unittest.TestCase):
     def test_five_primary_groups_keep_all_ten_modules_reachable(self):
         app_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "app.js").read_text(encoding="utf-8")
         index_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "index.html").read_text(encoding="utf-8")
-        self.assertEqual(len(build_views_module.MODULES), 10)
+        self.assertEqual(len(build_views_module.MODULES), 11)
         self.assertNotIn("filter", {item["key"] for item in build_views_module.MODULES})
         expected_groups = {
             "overview": "总览",
@@ -149,14 +149,15 @@ class BuildViewsTests(unittest.TestCase):
         )
         for source in readmes:
             self.assertIn("GPT-6 Astra", source)
-            self.assertIn("导航/配置/统计等跨模块架构与复杂调用链审阅", source)
+            self.assertIn("跨模块架构梳理、复杂调用链与生命周期/资源预算审阅", source)
             self.assertIn("DeepSeek V4.1 Flash", source)
-            self.assertIn("连续消息合并、缓存与调度实现", source)
-            self.assertIn("AstrBot 运行时使用部署者自行配置的 Provider，与上述 AI 开发工具相互独立", source)
-            self.assertIn("2,911 项测试通过（根测试 170 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187）", source)
+            self.assertIn("回复防抖、Anysearch 联网搜索、缓存与调度等代码实现", source)
+            self.assertIn("AstrBot 运行时使用部署者自行配置的 Provider，与上述开发工具相互独立", source)
+            self.assertIn("2,955 项测试通过（根测试 186 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28）", source)
             self.assertIn("OneBot v11", source)
             for repo in (
                 "astrbot_plugin_angel_heart",
+                "astrbot_plugin_anysearch",
                 "astrbot_plugin_livingmemory",
                 "astrbot_plugin_meme_manager",
                 "AstrBot-breezetts",
@@ -498,7 +499,7 @@ class BuildViewsTests(unittest.TestCase):
             )
 
             page = (view_root / "modules" / "meme" / "a_manage" / "index.html").read_text(encoding="utf-8")
-            self.assertIn('src="../../../module_bridge.js" data-module-key="meme"', page)
+            self.assertIn('src="../../../module_bridge.js?v=20261117" data-module-key="meme"', page)
 
     def test_previous_manifest_controls_stale_file_cleanup(self):
         with tempfile.TemporaryDirectory() as temp:

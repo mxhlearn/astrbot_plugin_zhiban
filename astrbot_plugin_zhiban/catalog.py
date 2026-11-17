@@ -2,6 +2,7 @@
 
 MODULES = (
     {"key": "heart", "label": "聊天互动", "package": "astrbot_plugin_angel_heart", "group": "聊天系统"},
+    {"key": "search", "label": "联网搜索", "package": "astrbot_plugin_anysearch", "group": "聊天系统"},
     {"key": "memory", "label": "记忆成长", "package": "astrbot_plugin_livingmemory", "group": "记忆成长"},
     {"key": "meme", "label": "表情互动", "package": "astrbot_plugin_meme_manager", "group": "表达创作"},
     {"key": "tts", "label": "语音回复", "package": "astrbot_plugin_breeze_tts", "group": "表达创作"},

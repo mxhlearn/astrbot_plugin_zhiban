@@ -14,9 +14,9 @@ class TerminationOrderingTests(unittest.IsolatedAsyncioTestCase):
             async def close(self):
                 order.append("host")
 
-        class Coalescer:
+        class ReplyDebounce:
             async def close(self):
-                order.append("coalescer")
+                order.append("reply_debounce")
 
         class Persona:
             async def close(self):
@@ -27,12 +27,12 @@ class TerminationOrderingTests(unittest.IsolatedAsyncioTestCase):
                 order.append("scheduler")
 
         plugin = object.__new__(ZhibanPlugin)
-        plugin.coalescer = Coalescer()
+        plugin.reply_debounce = ReplyDebounce()
         plugin.host = Host()
         plugin.persona = Persona()
         plugin.scheduler = Scheduler()
         await plugin.terminate()
-        self.assertEqual(order, ["coalescer", "host", "persona", "scheduler"])
+        self.assertEqual(order, ["reply_debounce", "host", "persona", "scheduler"])
 
     async def test_scheduler_closes_even_when_host_cleanup_fails(self):
         order = []
@@ -42,22 +42,22 @@ class TerminationOrderingTests(unittest.IsolatedAsyncioTestCase):
                 order.append("host")
                 raise RuntimeError("failed")
 
-        class Coalescer:
+        class ReplyDebounce:
             async def close(self):
-                order.append("coalescer")
+                order.append("reply_debounce")
 
         class Scheduler:
             async def close(self):
                 order.append("scheduler")
 
         plugin = object.__new__(ZhibanPlugin)
-        plugin.coalescer = Coalescer()
+        plugin.reply_debounce = ReplyDebounce()
         plugin.host = Host()
         plugin.persona = None
         plugin.scheduler = Scheduler()
         with self.assertRaisesRegex(RuntimeError, "failed"):
             await plugin.terminate()
-        self.assertEqual(order, ["coalescer", "host", "scheduler"])
+        self.assertEqual(order, ["reply_debounce", "host", "scheduler"])
 
 
 if __name__ == "__main__":

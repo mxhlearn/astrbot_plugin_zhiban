@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 
 MODULE_UI_ROOTS = {
     "heart": ("astrbot_plugin_angel_heart", "pages", "chat-config"),
+    "search": ("astrbot_plugin_anysearch", "pages", "search"),
     "memory": ("astrbot_plugin_livingmemory", "pages", "dashboard"),
     "meme": ("astrbot_plugin_meme_manager", "pages", "app"),
     "tts": ("astrbot_plugin_breeze_tts", "views", "panel"),
@@ -18,6 +19,7 @@ MODULE_UI_ROOTS = {
 
 MODULE_API_NAMES = {
     "heart": "astrbot_plugin_angel_heart",
+    "search": "astrbot_plugin_anysearch",
     "memory": "astrbot_plugin_livingmemory",
     "meme": "meme_manager",
     "tts": "astrbot_plugin_breeze_tts",
@@ -330,7 +332,10 @@ def prepare_module_ui_html(
     first_paint += f'<style id="zhiban-head-theme">{host_theme_css()}</style>'
     script = '<script src="/api/plugin/page/bridge-sdk.js"></script>'
     if module_key:
-        script += f'<script id="zhiban-module-adapter" src="{module_bridge_src}" data-module-key="{module_key}"></script>'
+        bridge_url = module_bridge_src
+        if "?" not in bridge_url:
+            bridge_url += "?v=20261117"
+        script += f'<script id="zhiban-module-adapter" src="{bridge_url}" data-module-key="{module_key}"></script>'
     match = re.search(r"<head\b[^>]*>", html, flags=re.IGNORECASE)
     if match:
         return html[: match.end()] + embed_bootstrap + first_paint + script + html[match.end() :]

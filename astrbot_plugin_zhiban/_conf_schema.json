@@ -42,25 +42,25 @@
                 "type": "float",
                 "description": "助理调用后休息时间（秒）",
                 "hint": "助理被调用后，普通群聊消息不会启动巡检；被点名时可以触发一次加速检查。默认值：30。",
-                "default": 30.0
+                "default": 30
               },
               "assistant_debounce_time": {
                 "type": "float",
                 "description": "点名等待时间（秒）",
                 "hint": "有人 @ 助理或叫到助理时，前台会先整理这段时间内的补充消息，再交给秘书根据最后一条消息判断。默认值：1。",
-                "default": 1.0
+                "default": 1
               },
               "secretary_debounce_time": {
                 "type": "float",
                 "description": "前台巡检最长等待时间（秒）",
                 "hint": "助理已经参与群聊时，前台启动巡检后最多等待这段时间就会检查助理忙闲、休息和能量，再决定是否交给秘书判断。默认值：30。",
-                "default": 30.0
+                "default": 30
               },
               "accelerate_debounce_time": {
                 "type": "float",
                 "description": "连续点名加速等待时间（秒）",
                 "hint": "前台正在等待消息补充时又有人叫到助理，会把本轮等待缩短到这里设定的时长，再交给秘书判断。默认值：1。",
-                "default": 1.0
+                "default": 1
               },
               "observation_timeout": {
                 "type": "int",
@@ -79,19 +79,19 @@
                 "type": "float",
                 "description": "初始能量",
                 "hint": "每个群首次创建能量状态时使用的能量值。默认值：100。",
-                "default": 100.0
+                "default": 100
               },
               "max_energy": {
                 "type": "float",
                 "description": "能量上限",
                 "hint": "能量恢复时不会超过这个值。默认值：100。",
-                "default": 100.0
+                "default": 100
               },
               "min_energy": {
                 "type": "float",
                 "description": "能量下限",
                 "hint": "回复扣能时不会低于这个值。默认值：-100。",
-                "default": -100.0
+                "default": -100
               },
               "recovery_per_second": {
                 "type": "float",
@@ -103,7 +103,7 @@
                 "type": "float",
                 "description": "每次回复基础消耗",
                 "hint": "每次实际形成回复内容时固定扣除的能量。默认值：14。",
-                "default": 14.0
+                "default": 14
               },
               "reply_cost_per_character": {
                 "type": "float",
@@ -332,55 +332,238 @@
               }
             }
           },
-          "reply_rhythm": {
+          "reply_debounce": {
             "type": "object",
-            "description": "连续消息合并",
-            "hint": "聊天行为设置；只作用于同一会话、同一发送者的连续纯文本补充。命令、@、引用、媒体和已由聊天模块防抖处理的事件不合并。",
+            "description": "思维链式消息防抖",
+            "hint": "仅接管私聊连续补充；群聊继续由聊天互动原有防抖协调。内部草稿调用会产生额外 Provider 费用，草稿内容不写入长期记忆或最终回复。",
             "items": {
-              "coalesce_enabled": {
+              "enabled": {
                 "type": "bool",
-                "description": "启用连续消息合并",
+                "description": "启用消息防抖",
                 "default": true
               },
-              "coalesce_quiet_ms": {
-                "type": "int",
-                "description": "静默合并窗口（毫秒）",
-                "default": 1500,
-                "slider": {
-                  "min": 200,
-                  "max": 5000
-                },
-                "hint": "收到新文本后重新计时；默认 1.5 秒。"
+              "enable_thinking": {
+                "type": "bool",
+                "description": "启用内部草稿判断",
+                "hint": "开启后每轮会额外调用 Provider 判断是否继续等待；关闭时退回有界随机静默防抖。",
+                "default": true
               },
-              "coalesce_max_ms": {
-                "type": "int",
-                "description": "最长合并窗口（毫秒）",
-                "default": 5000,
-                "slider": {
-                  "min": 1000,
-                  "max": 15000
-                },
-                "hint": "持续补充也会在最长窗口到达时及时提交。"
+              "think_provider_id": {
+                "type": "string",
+                "description": "草稿判断模型 ID",
+                "hint": "留空使用当前会话模型。可配置更快的低成本模型，草稿调用与最终回复分别计量。",
+                "_special": "select_provider",
+                "default": ""
               },
-              "coalesce_max_messages": {
+              "think_style": {
+                "type": "text",
+                "description": "草稿语气覆盖",
+                "hint": "留空跟随当前人格；填写后只把这段语气说明发送给草稿模型，不发送完整人格。",
+                "default": ""
+              },
+              "think_voice": {
+                "type": "string",
+                "description": "草稿格式",
+                "options": [
+                  "human",
+                  "structured"
+                ],
+                "default": "human"
+              },
+              "think_context": {
+                "type": "bool",
+                "description": "草稿附带最近对话",
+                "hint": "开启时会把有限的最近对话发送给草稿模型；第三方模型也会收到这些内容。",
+                "default": true
+              },
+              "think_context_chars": {
                 "type": "int",
-                "description": "单批最多合并消息（条）",
+                "description": "草稿上下文最大字符数",
+                "default": 4000,
+                "slider": {
+                  "min": 512,
+                  "max": 12000
+                }
+              },
+              "min_wait": {
+                "type": "int",
+                "description": "最短静默期（秒）",
+                "default": 3,
+                "slider": {
+                  "min": 1,
+                  "max": 10
+                }
+              },
+              "max_wait": {
+                "type": "int",
+                "description": "最长静默期（秒）",
                 "default": 8,
                 "slider": {
                   "min": 2,
                   "max": 20
                 }
               },
-              "coalesce_max_chars": {
+              "max_window": {
                 "type": "int",
-                "description": "单批最多合并字符（字）",
-                "default": 2000,
+                "description": "窗口总时长上限（秒）",
+                "default": 30,
                 "slider": {
-                  "min": 200,
-                  "max": 8000
+                  "min": 5,
+                  "max": 60
+                }
+              },
+              "max_passes": {
+                "type": "int",
+                "description": "最多草稿轮次",
+                "default": 4,
+                "slider": {
+                  "min": 1,
+                  "max": 6
+                }
+              },
+              "max_followups": {
+                "type": "int",
+                "description": "最多合并补充消息",
+                "default": 8,
+                "slider": {
+                  "min": 1,
+                  "max": 16
+                }
+              },
+              "max_chars": {
+                "type": "int",
+                "description": "单窗口文本字符上限",
+                "default": 16384,
+                "slider": {
+                  "min": 1024,
+                  "max": 32768
+                }
+              },
+              "max_bytes": {
+                "type": "int",
+                "description": "单窗口 UTF-8 字节上限",
+                "default": 16384,
+                "slider": {
+                  "min": 1024,
+                  "max": 32768
+                }
+              },
+              "forward_images": {
+                "type": "bool",
+                "description": "合并窗口内图片",
+                "default": true
+              },
+              "draft_concurrency": {
+                "type": "int",
+                "description": "草稿调用并发",
+                "default": 1,
+                "slider": {
+                  "min": 1,
+                  "max": 2
                 }
               }
             }
+          }
+        }
+      }
+    }
+  },
+  "search": {
+    "type": "object",
+    "description": "联网搜索",
+    "hint": "保留服务器现用实现；更改启用状态后重载知伴。",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "启用联网搜索",
+        "default": true
+      },
+      "settings": {
+        "type": "object",
+        "description": "联网搜索设置",
+        "items": {
+          "api_key": {
+            "type": "string",
+            "description": "Anysearch API Key",
+            "hint": "未填写时搜索/提取会明确显示未配置，不会发起联网请求。密钥仅以 secret 字段保存，不在状态和日志中回显。",
+            "default": "",
+            "secret": true
+          },
+          "enable_llm_tools": {
+            "type": "bool",
+            "description": "启用 LLM 自动调用工具",
+            "hint": "默认关闭。开启后才注册 anysearch_search、anysearch_extract、anysearch_batch_search；可能产生额外搜索调用与费用。",
+            "default": false
+          },
+          "timeout": {
+            "type": "int",
+            "description": "请求超时秒数",
+            "hint": "API 请求和网页预检共享该上限，范围 1-120。",
+            "default": 20
+          },
+          "max_response_bytes": {
+            "type": "int",
+            "description": "单次响应字节上限",
+            "hint": "默认 1048576（1 MiB），超过即拒绝，避免大响应占满内存。",
+            "default": 1048576
+          },
+          "max_concurrency": {
+            "type": "int",
+            "description": "并发请求上限",
+            "hint": "默认 2，范围 1-8；LLM 工具和命令共享该上限。",
+            "default": 2
+          },
+          "max_query_chars": {
+            "type": "int",
+            "description": "单个搜索关键词字符上限",
+            "hint": "默认 2000，范围 64-8000；超长查询直接拒绝，不进入缓存或网络请求。",
+            "default": 2000
+          },
+          "cache_ttl_seconds": {
+            "type": "int",
+            "description": "搜索文本缓存 TTL 秒数",
+            "hint": "默认 120 秒；0 表示禁用缓存。",
+            "default": 120
+          },
+          "cache_max_entries": {
+            "type": "int",
+            "description": "缓存条目上限",
+            "default": 64
+          },
+          "cache_max_bytes": {
+            "type": "int",
+            "description": "缓存总字节上限",
+            "hint": "默认 2097152（2 MiB）；单条超过总上限不会缓存。",
+            "default": 2097152
+          },
+          "preflight_redirects": {
+            "type": "bool",
+            "description": "提取前预检重定向",
+            "hint": "默认开启。手动跟随最多 max_redirects 次并逐跳校验 scheme、DNS 和私网地址；预检会产生一次轻量 HTTP 请求。",
+            "default": true
+          },
+          "max_redirects": {
+            "type": "int",
+            "description": "重定向上限",
+            "hint": "默认 3，范围 0-10。",
+            "default": 3
+          },
+          "command_result_chunk_size": {
+            "type": "int",
+            "description": "长结果分段长度",
+            "hint": "直接使用命令时超过该长度才分段，默认 1200；0 表示不分段。",
+            "default": 1200
+          },
+          "chunk_private_command_results": {
+            "type": "bool",
+            "description": "私聊长结果自动分段",
+            "default": true
+          },
+          "chunk_group_command_results": {
+            "type": "bool",
+            "description": "群聊长结果自动分段",
+            "hint": "默认关闭，避免群聊刷屏。",
+            "default": false
           }
         }
       }
@@ -3654,6 +3837,7 @@
         "description": "菜单排列顺序",
         "default": [
           "heart",
+          "search",
           "memory",
           "meme",
           "tts",
@@ -3665,6 +3849,21 @@
           "qqprofile"
         ],
         "hint": "默认按预期使用频率排列，不是实测使用统计。"
+      },
+      "queue_limit": {
+        "type": "int",
+        "description": "聊天等待总数",
+        "default": 20
+      },
+      "session_queue_limit": {
+        "type": "int",
+        "description": "单会话等待数",
+        "default": 4
+      },
+      "wait_seconds": {
+        "type": "int",
+        "description": "聊天等待上限（秒）",
+        "default": 90
       },
       "chat_concurrency": {
         "type": "int",
@@ -3710,33 +3909,6 @@
         "slider": {
           "min": 1,
           "max": 32
-        }
-      },
-      "queue_limit": {
-        "type": "int",
-        "description": "高级保护 · 全局排队消息上限（条）",
-        "default": 20,
-        "slider": {
-          "min": 1,
-          "max": 100
-        }
-      },
-      "session_queue_limit": {
-        "type": "int",
-        "description": "高级保护 · 单会话排队消息上限（条）",
-        "default": 4,
-        "slider": {
-          "min": 1,
-          "max": 10
-        }
-      },
-      "wait_seconds": {
-        "type": "int",
-        "description": "高级保护 · 排队等待上限（秒）",
-        "default": 90,
-        "slider": {
-          "min": 1,
-          "max": 600
         }
       }
     }
