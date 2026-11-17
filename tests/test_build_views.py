@@ -532,6 +532,8 @@ class BuildViewsTests(unittest.TestCase):
         app_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "app.js").read_text(encoding="utf-8")
         self.assertIn("navigateModuleSubpage may replace activeModuleFrame synchronously", app_source)
         self.assertIn('if (sequence !== moduleFrameSequence || item.key !== activeKey || activeView !== "workbench") return;', app_source)
+        self.assertIn('if (!accepted) event.preventDefault();', app_source)
+        self.assertNotIn("      event.preventDefault();\n      detail.accepted = accepted;", app_source)
         self.assertIn("document.addEventListener('click'", module_source)
         self.assertIn("data-zhiban-nav-bound", module_source)
         self.assertIn("message.token === state.appReadyToken", host_source)

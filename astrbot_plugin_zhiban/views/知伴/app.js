@@ -1099,8 +1099,8 @@ async function createModuleFrameElement(item, requestedRoute = null) {
         return;
       }
       const accepted = navigateModuleSubpage(item, { ...detail, path: route.path });
-      event.preventDefault();
       detail.accepted = accepted;
+      if (!accepted) event.preventDefault();
     });
 
     const markBridgeReady = () => {
