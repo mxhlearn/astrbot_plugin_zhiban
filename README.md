@@ -11,7 +11,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square)](https://github.com/AstrBotDevs/AstrBot)
 [![OneBot](https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square)](#兼容矩阵)
 [![Python](https://img.shields.io/badge/Python-3.12-3f7560?style=flat-square)](#本地开发)
-[![Tests](https://img.shields.io/badge/tests-1721%20Python%20%2B%20139%20Node-2f6b4f?style=flat-square)](#质量与验证)
+[![Tests](https://img.shields.io/badge/tests-2955%20Python%20%2B%20140%20Node-2f6b4f?style=flat-square)](#质量与验证)
 [![License](https://img.shields.io/badge/license-mixed%20%2F%20review%20required-8c5917?style=flat-square)](astrbot_plugin_zhiban/README.md)
 
 [快速开始](#快速开始) · [功能模块](#十一个运行模块) · [完整文档](astrbot_plugin_zhiban/README.md)
@@ -140,7 +140,7 @@
 ## 质量与验证
 
 - **Python**：2,955 项测试通过（根测试 186 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28），7 项跳过，另有 127 个子测试通过（根 34 + 表情 93）。
-- **Node**：139 项测试通过（根桥接/前端 45 + 表情前端 94）。
+- **Node**：140 项测试通过（根桥接/前端 46 + 表情前端 94）。
 - **页面**：登录态下检查五入口、浅绿首帧、模块挂载、快速切换与配置页；Linux 实际部署仍待目标环境验收。
 - **配置安全**：并发冲突、密钥脱敏、显式清除、保存/应用、无修改反馈均有回归。
 - **竞态**：快速并发跳转最终停留在最后目标，旧页面结果不覆盖新页面。
@@ -200,7 +200,7 @@
 astrbot_plugin_zhiban/
   main.py                  插件入口、Web API、全局设置、聊天准入
   runtime.py               模块生命周期、冲突与资源清理
-  catalog.py               十模块和五入口元数据
+  catalog.py               十一个模块和五入口元数据
   settings_service.py      配置版本、校验、密钥脱敏
   scheduling.py            队列、超时与媒体串行
   views/知伴/              侧栏应用、工作台、主题与桥接
