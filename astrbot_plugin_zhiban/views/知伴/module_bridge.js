@@ -1,3 +1,4 @@
+// 知伴模块桥接；内容变更会自动更新 cache key。
 (() => {
   const CHANNEL = 'astrbot-plugin-page';
   const modules = [
@@ -153,7 +154,10 @@
 
   function installRouteBridge() {
     if (!embedded) return;
-    document.addEventListener('click', (event) => {
+    // Use window capture rather than document capture: module pages can be
+    // mounted in a sandboxed srcdoc where the document listener can be skipped
+    // by host-level event interception. The window remains the common target.
+    window.addEventListener('click', (event) => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const control = event.target?.closest?.('a[data-module-target], a[data-nav-target], button[data-module-target]');
       if (!control || control.target === '_blank' || control.hasAttribute('download')) return;

@@ -1,9 +1,22 @@
 """Resolve the small set of bundled module pages exposed by the app shell."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path, PurePosixPath
+
+
+def _module_bridge_cache_token() -> str:
+    """Derive a cache key from the bridge contents, not a manually bumped date."""
+    bridge = Path(__file__).resolve().with_name("views") / "知伴" / "module_bridge.js"
+    try:
+        return hashlib.sha256(bridge.read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "dev"
+
+
+MODULE_BRIDGE_CACHE_TOKEN = _module_bridge_cache_token()
 
 
 MODULE_UI_ROOTS = {
@@ -334,7 +347,7 @@ def prepare_module_ui_html(
     if module_key:
         bridge_url = module_bridge_src
         if "?" not in bridge_url:
-            bridge_url += "?v=20261117"
+            bridge_url += f"?v={MODULE_BRIDGE_CACHE_TOKEN}"
         script += f'<script id="zhiban-module-adapter" src="{bridge_url}" data-module-key="{module_key}"></script>'
     match = re.search(r"<head\b[^>]*>", html, flags=re.IGNORECASE)
     if match:

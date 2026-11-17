@@ -3,6 +3,7 @@
   const APP_PLUGIN_NAME = "astrbot_plugin_zhiban";
   const MODULE_API_NAMES = {
     heart: "astrbot_plugin_angel_heart",
+    search: "astrbot_plugin_anysearch",
     memory: "astrbot_plugin_livingmemory",
     meme: "meme_manager",
     tts: "astrbot_plugin_breeze_tts",

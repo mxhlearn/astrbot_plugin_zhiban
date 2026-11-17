@@ -10,6 +10,9 @@ from pathlib import Path
 
 
 BUILD_PATH = Path(__file__).parents[1] / "build_views.py"
+PLUGIN_ROOT = Path(__file__).parents[1] / "astrbot_plugin_zhiban"
+BRIDGE_HASH = hashlib.sha256((PLUGIN_ROOT / "views" / "知伴" / "module_bridge.js").read_bytes()).hexdigest()[:12]
+BRIDGE_FILENAME = f"module_bridge.{BRIDGE_HASH}.js"
 spec = importlib.util.spec_from_file_location("zhiban_build_views_under_test", BUILD_PATH)
 build_views_module = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = build_views_module
@@ -87,6 +90,7 @@ class BuildViewsTests(unittest.TestCase):
         self.assertIn("Token 未统计", app_source)
         self.assertIn("if (item && item.label) items.push(item.label);", app_source)
         self.assertIn("function navigateModuleSubpage", app_source)
+        self.assertIn("activeSubpageQuery = nextQuery;\n  persistRouteState();", app_source)
         self.assertIn("detail.accepted = accepted", app_source)
         self.assertIn("ui/global", app_source)
         self.assertIn("statusRequestInFlight", app_source)
@@ -106,7 +110,11 @@ class BuildViewsTests(unittest.TestCase):
         self.assertIn("syncTheme(context)", app_source)
         self.assertIn("modulePageCache.clear()", app_source)
         self.assertNotIn("const sdkUrl = new URL(\"/api/plugin/page/bridge-sdk.js\", location.origin)", app_source)
-        self.assertIn("const bridgeSrc = new URL(\"./module_bridge.js\", document.baseURI).href", app_source)
+        self.assertIn("const declaredBridge = source.match", app_source)
+        self.assertIn('const bridgeUrl = new URL("./module_bridge.js", document.baseURI)', app_source)
+        self.assertIn('const declaredName = declaredUrl.pathname.split("/").pop()', app_source)
+        self.assertIn('bridgeUrl.pathname = bridgeUrl.pathname.replace', app_source)
+        self.assertIn('bridgeUrl.search = declaredUrl.search', app_source)
         self.assertIn("zhiban-panel-bootstrap", app_source)
         self.assertIn('documentElement.dataset.zhibanHostFrame=\"true\"', app_source)
         self.assertIn('data-module-key="${moduleKey}"', app_source)
@@ -219,6 +227,7 @@ class BuildViewsTests(unittest.TestCase):
         root = Path(__file__).parents[1] / "astrbot_plugin_zhiban"
         app = (root / "views" / "知伴" / "app.js").read_text(encoding="utf-8")
         bridge = (root / "views" / "知伴" / "module_bridge.js").read_text(encoding="utf-8")
+        self.assertIn("window.addEventListener('click'", bridge)
         qzone = (
             root
             / "modules"
@@ -326,10 +335,10 @@ class BuildViewsTests(unittest.TestCase):
                     if source.name.lower() == "index.html":
                         expected_source = source
                         depth = 2 + len(relative.parent.parts)
-                        bridge_src = "../" * depth + "module_bridge.js"
+                        bridge_src = "../" * depth + BRIDGE_FILENAME
                         if module == "meme" and relative.as_posix() == "index.html":
                             expected_source = source_root / "a_manage" / "index.html"
-                            bridge_src = "../../../module_bridge.js"
+                            bridge_src = "../../../" + BRIDGE_FILENAME
                         expected = build_views_module.prepare_module_ui_html(
                             expected_source.read_text(encoding="utf-8"),
                             source_parts[0],
@@ -414,7 +423,7 @@ class BuildViewsTests(unittest.TestCase):
                         hashlib.sha256(generated.read_bytes()).hexdigest(),
                     )
                     if path.endswith("/index.html"):
-                        self.assertIn("module_bridge.js", generated.read_text(encoding="utf-8"))
+                        self.assertIn(BRIDGE_FILENAME, generated.read_text(encoding="utf-8"))
                     else:
                         source = plugin_root / "modules" / item["source"]
                         self.assertEqual(item["sha256"], hashlib.sha256(source.read_bytes()).hexdigest())
@@ -427,7 +436,7 @@ class BuildViewsTests(unittest.TestCase):
                     *build_views_module.MODULE_UI_ROOTS[module]
                 )
                 if path.endswith("/index.html"):
-                    self.assertIn("module_bridge.js", (view_root / "modules" / path).read_text(encoding="utf-8"))
+                    self.assertIn(BRIDGE_FILENAME, (view_root / "modules" / path).read_text(encoding="utf-8"))
                 else:
                     self.assertEqual(
                         (view_root / "modules" / path).read_bytes(),
@@ -478,10 +487,10 @@ class BuildViewsTests(unittest.TestCase):
             page = (view_root / "modules" / "meme" / "index.html").read_text(encoding="utf-8")
             self.assertEqual(result["files"], 2)
             self.assertEqual(page.count("/api/plugin/page/bridge-sdk.js"), 1)
-            self.assertIn("module_bridge.js", page)
+            self.assertIn(BRIDGE_FILENAME, page)
             self.assertIn('data-module-key="meme"', page)
-            self.assertLess(page.index("/api/plugin/page/bridge-sdk.js"), page.index("module_bridge.js"))
-            self.assertLess(page.index("module_bridge.js"), page.index('src="./app.js"'))
+            self.assertLess(page.index("/api/plugin/page/bridge-sdk.js"), page.index(BRIDGE_FILENAME))
+            self.assertLess(page.index(BRIDGE_FILENAME), page.index('src="./app.js"'))
             self.assertIn("window.testPage = true;", (view_root / "modules" / "meme" / "app.js").read_text(encoding="utf-8"))
 
     def test_nested_pages_resolve_bridge_from_signed_view_root(self):
@@ -499,7 +508,15 @@ class BuildViewsTests(unittest.TestCase):
             )
 
             page = (view_root / "modules" / "meme" / "a_manage" / "index.html").read_text(encoding="utf-8")
-            self.assertIn('src="../../../module_bridge.js?v=20261117" data-module-key="meme"', page)
+            bridge_hash = BRIDGE_HASH
+            self.assertIn(f'src="../../../{BRIDGE_FILENAME}?v={bridge_hash}" data-module-key="meme"', page)
+            app_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "app.js").read_text(encoding="utf-8")
+            self.assertIn("const declaredBridge = source.match", app_source)
+            self.assertIn('const bridgeUrl = new URL("./module_bridge.js", document.baseURI)', app_source)
+            self.assertIn('const declaredName = declaredUrl.pathname.split("/").pop()', app_source)
+            self.assertIn('bridgeUrl.pathname = bridgeUrl.pathname.replace', app_source)
+            self.assertIn('bridgeUrl.search = declaredUrl.search', app_source)
+            self.assertTrue((view_root / f'module_bridge.{bridge_hash}.js').is_file())
 
     def test_previous_manifest_controls_stale_file_cleanup(self):
         with tempfile.TemporaryDirectory() as temp:

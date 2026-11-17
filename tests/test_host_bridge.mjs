@@ -5,7 +5,7 @@ import vm from "node:vm";
 
 const bridgePath = new URL("../astrbot_plugin_zhiban/views/知伴/host_bridge.js", import.meta.url);
 
-async function createBridge() {
+async function createBridge(module = "meme", label = "表情互动") {
   const source = await readFile(bridgePath, "utf8");
   const listeners = new Map();
   const calls = [];
@@ -81,7 +81,7 @@ async function createBridge() {
       return !event.defaultPrevented;
     },
   };
-  const detach = window.ZhibanBridge.attachFrame(frame, "meme", "表情互动");
+  const detach = window.ZhibanBridge.attachFrame(frame, module, label);
   const message = listeners.get("message");
   const sendFromChild = async (data) => message({
     source: frame.contentWindow,
@@ -94,6 +94,15 @@ async function createBridge() {
   };
   return { window, parent, calls, frame, sent, events, detach, emitContext, sseHandlers: () => sseHandlers, sendFromChild };
 }
+
+test("shell broker maps search status to the Anysearch API scope", async () => {
+  const bridge = await createBridge("search", "联网搜索");
+  await bridge.sendFromChild({ kind: "ready", module: "search" });
+  assert.equal(bridge.sent[0].message.context.pluginName, "astrbot_plugin_anysearch");
+  await bridge.sendFromChild({ kind: "request", requestId: "search-status", action: "api:get", endpoint: "status", params: {} });
+  assert.deepEqual(bridge.calls[0], ["get", "ui/module_api/search/status", {}]);
+  assert.equal(bridge.sent.at(-1).message.ok, true);
+});
 
 test("shell broker proxies child API requests through the authenticated Zhiban route", async () => {
   const bridge = await createBridge();

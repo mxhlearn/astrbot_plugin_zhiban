@@ -11,7 +11,7 @@
 [![AstrBot](https://img.shields.io/badge/AstrBot-4.29.x-4f8f6c?style=flat-square)](https://github.com/AstrBotDevs/AstrBot)
 [![OneBot](https://img.shields.io/badge/OneBot-v11-5b7f66?style=flat-square)](#兼容矩阵)
 [![Python](https://img.shields.io/badge/Python-3.12-3f7560?style=flat-square)](#本地开发)
-[![Tests](https://img.shields.io/badge/tests-2955%20Python%20%2B%20140%20Node-2f6b4f?style=flat-square)](#质量与验证)
+[![Tests](https://img.shields.io/badge/tests-2955%20Python%20%2B%20141%20Node-2f6b4f?style=flat-square)](#质量与验证)
 [![License](https://img.shields.io/badge/license-mixed%20%2F%20review%20required-8c5917?style=flat-square)](astrbot_plugin_zhiban/README.md)
 
 [快速开始](#快速开始) · [功能模块](#十一个运行模块) · [完整文档](astrbot_plugin_zhiban/README.md)
@@ -140,7 +140,7 @@
 ## 质量与验证
 
 - **Python**：2,955 项测试通过（根测试 186 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28），7 项跳过，另有 127 个子测试通过（根 34 + 表情 93）。
-- **Node**：140 项测试通过（根桥接/前端 46 + 表情前端 94）。
+- **Node**：141 项测试通过（根桥接/前端 47 + 表情前端 94）。
 - **页面**：登录态下检查五入口、浅绿首帧、模块挂载、快速切换与配置页；Linux 实际部署仍待目标环境验收。
 - **配置安全**：并发冲突、密钥脱敏、显式清除、保存/应用、无修改反馈均有回归。
 - **竞态**：快速并发跳转最终停留在最后目标，旧页面结果不覆盖新页面。
@@ -149,6 +149,7 @@
 - **同负载观测**：本机旧/新安装态各 20 轮一级切换约 20.0s / 19.8s，结束时均保留 1 个 frame；宿主重启后的 Private/WorkingSet 为约 3.157/0.571 GB 与 3.193/0.608 GB，未证明进程 RSS 降低。浏览器顶层 Performance 指标受宿主 frame 边界限制，不能代表 iframe 内部 JS heap。
 - **加载体验**：同一模块路由复用已就绪 frame；模块 HTML 使用 30 秒内、最多 6 条且估算不超过 2 MiB（单条 512 KiB）的浏览器内存缓存；UTF-8 字节为估算，不等同 JS heap。过期项由低频维护清理，进入分组后仅串行预取可见分组的受认证 HTML，最多 1 个请求在途，离开页面/分组或节省流量时取消；父加载条在 iframe 插入后移除，刷新/应用/失败会失效。
 - **回复防抖**：采用 `reply_merge` 1.4.2 的 draft-window 机制替换此前自研静默合并。当前仅接管私聊，群聊继续由聊天互动（AngelHeart）唯一负责，避免双层防抖。每窗口默认最多 4 轮草稿调用、8 条补充、16 KiB 文本和 30 秒；无标记/超时退回等待，不丢弃正常最终回复。草稿只用于专用控制标记判断与最终提示词注入，不写入长期记忆或作为聊天内容展示；流式回复已经发出的片段无法撤回。草稿调用会产生额外 Provider 费用，并与最终回复分别计量。
+- **真实导航**：本机安装态下联网搜索显示 API Key 未配置且不自动请求；表情顶部资源广场、空态“前往资源广场”、语义化、设置深链及刷新恢复均通过。
 - **资源预算**：聊天、媒体、后台维护默认各 1 个并发，媒体与后台共享重资源预算；模块启动/清理、TTS 合成、图片生成/编辑、音乐交付、QQ 空间 daemon 启停已接入。记忆衰减/整合/备份、FAISS 实际写盘、索引重建，以及表情描述、向量生成、语义检索和自动收集重建只在真实重任务区间取维护票；空闲等待、防抖窗口和轻量轮询不持票。其他模块的非重轮询和未被识别为资源密集的定时任务仍按上游实现运行，不宣称全部后台任务已纳入。 Anysearch 搜索/正文提取默认并发 2、请求超时 20 秒、单响应 1 MiB、文本缓存 120 秒且最多 64 条/2 MiB；缺 API Key 显示未配置且不发起请求。
 - **工作台**：本机登录态下七个模块完成页面读取、桥接握手与界面挂载；图片创作无供应商、QQ 动态 Cookie 失效时显示对应受限状态。
 - **构建**：资源清单、ZIP 和 SHA-256 校验流程可用；具体文件数以构建产物为准。

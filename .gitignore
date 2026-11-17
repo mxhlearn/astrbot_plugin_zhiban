@@ -17,3 +17,4 @@ dist/
 
 node_modules/
 .tmp/
+/astrbot_plugin_zhiban/views/知伴/module_bridge.*.js

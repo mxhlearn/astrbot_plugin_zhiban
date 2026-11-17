@@ -138,6 +138,19 @@ def build_views(
     except (OSError, UnicodeError, json.JSONDecodeError):
         pass
 
+    # Serve a content-addressed bridge filename as well as the query key. A
+    # browser extension or service worker can cache a stale response while
+    # ignoring the query string; a changed pathname is a stronger boundary.
+    bridge_source = view_root / "module_bridge.js"
+    if not bridge_source.is_file():
+        bridge_source = VIEW_ROOT / "module_bridge.js"
+    bridge_token = hashlib.sha256(bridge_source.read_bytes()).hexdigest()[:12]
+    bridge_name = f"module_bridge.{bridge_token}.js"
+    for stale_bridge in view_root.glob("module_bridge.*.js"):
+        if stale_bridge.name != bridge_name:
+            stale_bridge.unlink()
+    (view_root / bridge_name).write_bytes(bridge_source.read_bytes())
+
     generated: set[str] = set()
     adapted_assets: list[dict[str, str]] = []
     for module, source_parts in mapping.items():
@@ -161,7 +174,7 @@ def build_views(
             if source.name.lower() == "index.html":
                 html = source.read_text(encoding="utf-8")
                 depth = 2 + len(PurePosixPath(relative_inside).parent.parts)
-                bridge_src = "../" * depth + "module_bridge.js"
+                bridge_src = "../" * depth + bridge_name
                 reason = BRIDGE_REASON
                 # The meme upstream root is only a redirect to a_manage. A
                 # sandboxed srcdoc cannot follow that navigation reliably, so
@@ -177,7 +190,7 @@ def build_views(
                         *source_parts, "a_manage", "index.html"
                     ).as_posix()
                     html = source.read_text(encoding="utf-8")
-                    bridge_src = "../../../module_bridge.js"
+                    bridge_src = "../../../" + bridge_name
                     reason = (
                         "entry redirect materialized as the management page with "
                         "a controlled base URL for sandboxed embedding"

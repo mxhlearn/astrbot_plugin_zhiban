@@ -886,6 +886,7 @@ function navigateModuleSubpage(item, detail = {}) {
   activeSubpage = route.key;
   activeSubpageHash = nextHash;
   activeSubpageQuery = nextQuery;
+  persistRouteState();
   const url = syncRouteUrl(new URL(window.location.href));
   url.searchParams.set("group", activeGroup);
   url.searchParams.set("module", activeKey);
@@ -1168,7 +1169,22 @@ async function createModuleFrameElement(item, requestedRoute = null) {
 function rewriteModuleDocument(source, documentUrl, moduleKey, route = {}) {
   const declaredBase = source.match(/<base\b[^>]*\bhref=["']([^"']+)["']/i)?.[1];
   const moduleBase = new URL(declaredBase || "./", documentUrl);
-  const bridgeSrc = new URL("./module_bridge.js", document.baseURI).href;
+  // Preserve the content-hash query emitted by build_views. Rebuilding the
+  // adapter URL from only "./module_bridge.js" reintroduces a stale cached
+  // bridge, which can leave the search module without its API scope.
+  const declaredBridge = source.match(/<script\b[^>]*\bid=["']zhiban-module-adapter["'][^>]*\bsrc=["']([^"']+)["']/i)?.[1];
+  const bridgeUrl = new URL("./module_bridge.js", document.baseURI);
+  if (declaredBridge) {
+    try {
+      const declaredUrl = new URL(declaredBridge, documentUrl);
+      const declaredName = declaredUrl.pathname.split("/").pop() || "";
+      if (/^module_bridge(?:\.[0-9a-f]{12})?\.js$/.test(declaredName)) {
+        bridgeUrl.pathname = bridgeUrl.pathname.replace(/[^/]+$/, declaredName);
+        bridgeUrl.search = declaredUrl.search;
+      }
+    } catch { /* Keep the signed bridge fallback. */ }
+  }
+  const bridgeSrc = bridgeUrl.href;
   const routeState = {
     subpage: route.key || "",
     path: route.path || "index.html",

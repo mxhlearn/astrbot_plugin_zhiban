@@ -37,7 +37,7 @@ class ModuleUiAssetTests(unittest.TestCase):
         result = ui_assets.prepare_module_ui_html(source, "astrbot_plugin_angel_heart")
         self.assertEqual(result.count("/api/plugin/page/bridge-sdk.js"), 1)
         self.assertIn('<meta name="view-transition" content="same-origin">', result)
-        self.assertIn('src="../../module_bridge.js?v=20261117" data-module-key="heart"', result)
+        self.assertIn(f'src="../../module_bridge.js?v={ui_assets.MODULE_BRIDGE_CACHE_TOKEN}" data-module-key="heart"', result)
         self.assertEqual(result.count('id="zhiban-module-adapter"'), 1)
         self.assertLess(result.index("module_bridge.js"), result.index('src="./app.js"'))
 
