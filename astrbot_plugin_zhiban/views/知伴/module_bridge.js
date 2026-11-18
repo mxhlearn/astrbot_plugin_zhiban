@@ -60,10 +60,11 @@
       pageTitle: current.label,
       locale: context?.locale || 'zh-CN',
       subpage: context?.subpage || initialRoute.subpage || '',
-      subpageHash: context?.subpageHash || initialRoute.hash || '',
+      subpageHash: context?.subpageHash || initialRoute.subpageHash || initialRoute.hash || '',
       query: context?.query && typeof context.query === 'object'
         ? { ...initialRoute.query, ...context.query }
         : { ...(initialRoute.query || {}) },
+      hash: String(context?.hash || initialRoute.hash || initialRoute.subpageHash || ''),
       path: String(context?.path || initialRoute.path || ''),
     };
   }
@@ -90,7 +91,7 @@
     return path;
   }
 
-  function resolveModuleTarget(target) {
+  function resolveModuleTarget(target, options = {}) {
     const pageRoot = modulePageRoot();
     const rawTarget = String(target || '').trim();
     if (!rawTarget || rawTarget.includes('\\')) return null;
@@ -110,7 +111,10 @@
     // data-module-target values are module-relative; ordinary anchors are
     // page-relative. Try both controlled bases, but always reject URLs outside
     // this exact module root (never cross-module or sandbox escape).
-    const explicitModulePath = rawTarget.includes('/') || rawTarget.startsWith('#');
+    // data-module-target is explicitly module-root relative. Ordinary href /
+    // data-nav-target values stay page relative, which lets a nested page link
+    // back to ../settings/index.html without escaping this module root.
+    const explicitModulePath = rawTarget.startsWith('#') || options.moduleRelative === true;
     const bases = explicitModulePath ? [moduleRoot] : [moduleRoot, pageRoot];
     for (const base of bases) {
       const candidate = rawTarget.startsWith('#') ? `${initialPath}${rawTarget}` : rawTarget;
@@ -879,6 +883,13 @@
     reportError: sendAppError,
     isEmbedded: embedded,
     navigate: navigateModule,
+    onContext(handler) {
+      const unsubscribe = bridged.onContext(handler);
+      if (typeof handler === 'function') {
+        try { handler(moduleContext(context)); } catch { /* Keep subscription active. */ }
+      }
+      return unsubscribe;
+    },
   };
   Object.defineProperty(moduleApi, "route", { get: () => moduleContext(context) });
   window.ZhibanModule = moduleApi;

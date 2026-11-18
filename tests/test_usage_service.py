@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import sqlite3
 import sys
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -605,9 +606,145 @@ def test_duplicate_response_without_request_id_is_stable(tmp_path):
         request_id = connection.execute(
             "SELECT request_id FROM usage_records"
         ).fetchone()[0]
-    assert request_id.startswith("anonymous:")
-    assert request_id.removeprefix("anonymous:").isdigit()
+    assert request_id.startswith("anonymous-call:")
+    uuid.UUID(hex=request_id.removeprefix("anonymous-call:"))
     assert service.summary(NOW)["today"]["requests"] == 1
+
+
+def test_anonymous_provider_calls_with_recycled_addresses_are_counted_separately(tmp_path):
+    service = make_service(tmp_path)
+    call_ids = [service.new_call_id() for _ in range(100)]
+
+    # Recreate each response while its predecessor is unreachable.  CPython
+    # commonly recycles the object address, which was the old duplicate-key
+    # bug; each real provider call still supplies a distinct explicit id.
+    for call_id in call_ids:
+        response = Response(None, TokenUsage(2, 0, 2))
+        assert service.record_response(
+            response, source="chat", call_id=call_id, occurred_at=NOW
+        )
+
+    assert service.summary(NOW)["today"]["requests"] == 100
+    with sqlite3.connect(tmp_path / "usage.db") as connection:
+        stored_ids = [
+            row[0]
+            for row in connection.execute(
+                "SELECT request_id FROM usage_records ORDER BY id"
+            ).fetchall()
+        ]
+    assert stored_ids == call_ids
+    assert len(set(stored_ids)) == 100
+
+
+def test_repeated_hooks_share_one_explicit_call_id(tmp_path):
+    service = make_service(tmp_path)
+    call_id = service.new_call_id()
+    response = Response(None, TokenUsage(2, 1, 3))
+
+    first_hook = SimpleNamespace(
+        extra={
+            "_zhiban_usage_source": "heart",
+            "_zhiban_usage_call_id": call_id,
+        }
+    )
+    second_hook = SimpleNamespace(extra={"_zhiban_usage_source": "module"})
+
+    assert service.record_event(
+        first_hook, response, source="fallback", is_final=True, occurred_at=NOW
+    )
+    # The second hook has no copy of the call id.  The compatibility binding is
+    # deliberately kept here because it is the same live response object.
+    assert service.record_response(
+        response,
+        source="provider-proxy",
+        call_id=call_id,
+        is_final=True,
+        occurred_at=NOW,
+    ) is False
+    assert service.summary(NOW)["today"]["requests"] == 1
+    assert service.summary(NOW)["today"]["tokens"] == 6
+    with sqlite3.connect(tmp_path / "usage.db") as connection:
+        stored = connection.execute(
+            "SELECT request_id, source FROM usage_records"
+        ).fetchall()
+    assert stored == [(call_id, "heart")]
+
+
+def test_begin_finish_provider_call_bridge_survives_duplicate_hooks(tmp_path):
+    service = make_service(tmp_path)
+    response = Response(None, TokenUsage(4, 0, 1))
+    call_id = service.begin_provider_call(response)
+    assert call_id.startswith("anonymous-call:")
+
+    event = SimpleNamespace(
+        extra={
+            "_zhiban_usage_source": "chat",
+            "_zhiban_usage_call_id": call_id,
+        }
+    )
+    assert service.record_event(event, response, is_final=True, occurred_at=NOW)
+    assert service.finish_provider_call(response, clear_binding=False) == call_id
+    assert service.record_response(
+        response, source="module", is_final=True, occurred_at=NOW
+    ) is False
+    assert service.summary(NOW)["today"]["requests"] == 1
+
+
+def test_retry_after_failure_with_distinct_call_ids_counts_both_attempts(tmp_path):
+    service = make_service(tmp_path)
+    first_call = service.new_call_id()
+    retry_call = service.new_call_id()
+    assert first_call != retry_call
+
+    failed = Response(None, None)
+    succeeded = Response(None, TokenUsage(5, 0, 1))
+    assert service.record_response(
+        failed,
+        source="chat",
+        status="failed",
+        call_id=first_call,
+        occurred_at=NOW,
+    )
+    assert service.record_response(
+        succeeded,
+        source="chat",
+        status="completed",
+        call_id=retry_call,
+        occurred_at=NOW,
+    )
+    today = service.summary(NOW)["today"]
+    assert today["requests"] == 2
+    assert today["failed_responses"] == 1
+    assert today["successful_responses"] == 1
+    assert today["tokens"] == 6
+
+
+def test_anonymous_call_id_does_not_survive_service_restart(tmp_path):
+    db_path = tmp_path / "usage.db"
+    first_service = UsageService(db_path, "Asia/Shanghai")
+    response = Response(None, TokenUsage(3, 0, 2))
+    first_id = first_service.new_call_id()
+    assert first_service.record_response(
+        response, source="chat", call_id=first_id, occurred_at=NOW
+    )
+    assert first_service.record_response(
+        response, source="chat", call_id=first_id, occurred_at=NOW
+    ) is False
+
+    restarted = UsageService(db_path, "Asia/Shanghai")
+    assert restarted.record_response(
+        response, source="chat", occurred_at=NOW
+    )
+    assert restarted.record_response(
+        response, source="chat", occurred_at=NOW
+    ) is False
+    stored = sqlite3.connect(db_path).execute(
+        "SELECT request_id FROM usage_records ORDER BY id"
+    ).fetchall()
+    assert len(stored) == 2
+    assert stored[0][0] == first_id
+    assert stored[1][0].startswith("anonymous-call:")
+    assert stored[0][0] != stored[1][0]
 
 
 def test_completed_without_usage_upgrades_failed_attempt_but_clears_tokens(tmp_path):

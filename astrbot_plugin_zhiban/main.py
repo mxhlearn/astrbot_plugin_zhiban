@@ -754,18 +754,61 @@ class ZhibanPlugin(Star):
         }
 
     async def _reply_debounce_style(self, event: AstrMessageEvent) -> str:
-        """Use the approved persona as the draft voice when no override is set."""
+        """Use Zhiban's current effective persona voice for private drafts."""
 
-        persona = getattr(self, "persona", None)
-        if persona is None:
-            return ""
+        parts = []
+        try:
+            # AstrBot normally injects the selected base persona through
+            # persona_manager; reuse that resolved value instead of guessing.
+            manager = getattr(self.context, "persona_manager", None)
+            resolver = getattr(manager, "resolve_selected_persona", None)
+            if callable(resolver):
+                umo = str(getattr(event, "unified_msg_origin", "") or "")
+                conversation_persona_id = None
+                conversations = getattr(self.context, "conversation_manager", None)
+                get_current = getattr(conversations, "get_current_conversation", None)
+                if callable(get_current) and umo:
+                    try:
+                        value = get_current(umo)
+                        if inspect.isawaitable(value):
+                            value = await value
+                        conversation = value
+                        conversation_persona_id = getattr(
+                            conversation, "persona_id", None
+                        )
+                        if conversation_persona_id is None and isinstance(
+                            conversation, dict
+                        ):
+                            conversation_persona_id = conversation.get("persona_id")
+                    except Exception:
+                        conversation_persona_id = None
+                resolved = await resolver(
+                    umo=umo,
+                    conversation_persona_id=conversation_persona_id,
+                    platform_name=event.get_platform_name(),
+                )
+                persona = resolved[1] if isinstance(resolved, tuple) and len(resolved) > 1 else None
+                text = getattr(persona, "prompt", None)
+                if text is None and isinstance(persona, dict):
+                    text = persona.get("prompt")
+                if text:
+                    parts.append(str(text).strip())
+        except Exception:
+            parts = []
+
         try:
             from .memory_control import scope_for_event
 
-            text = await persona.approved_text(scope_for_event(event))
-            return str(text or "").strip()[:2000]
+            persona = getattr(self, "persona", None)
+            if persona is not None:
+                approved = await persona.approved_text(scope_for_event(event))
+                if approved:
+                    parts.append(str(approved).strip())
         except Exception:
-            return ""
+            pass
+
+        merged = "\n".join(part for part in parts if part)
+        return merged[:2000]
 
     @staticmethod
     def _safe_bool(value, default: bool) -> bool:
@@ -826,6 +869,13 @@ class ZhibanPlugin(Star):
     @filter.on_llm_request(priority=40)
     async def merge_reply_request(self, event, req):
         """Inject the finished draft window after AngelHeart and before persona."""
+        if getattr(self, "usage", None) is not None:
+            try:
+                current = event.get_extra("_zhiban_usage_call_id")
+                if not current:
+                    event.set_extra("_zhiban_usage_call_id", self.usage.new_call_id())
+            except Exception:
+                pass
         continued = await self.reply_debounce.merge_request(event, req)
         if not continued:
             event.stop_event()
@@ -837,6 +887,7 @@ class ZhibanPlugin(Star):
         try:
             source = event.get_extra("_zhiban_usage_source")
             admitted = event.get_extra("_zhiban_usage_admitted")
+            call_id = event.get_extra("_zhiban_usage_call_id")
         except Exception:
             source = None
             admitted = None
@@ -848,6 +899,7 @@ class ZhibanPlugin(Star):
             response,
             source=str(source or "heart"),
             status=status,
+            call_id=call_id,
             is_final=True,
         )
         if inserted:

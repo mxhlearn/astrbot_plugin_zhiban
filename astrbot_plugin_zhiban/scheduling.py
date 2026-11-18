@@ -15,25 +15,35 @@ class _Waiter:
 
 
 class DynamicLimiter:
-    """FIFO async limiter whose capacity can change without swapping pools."""
+    """FIFO async limiter with a live capacity and phantom-free handoff.
+
+    A permit is removed from ``_active`` while reserved for a waiter. Delivery,
+    cancellation, timeout, capacity changes and close mutate one state machine
+    in the event loop, so a task cancelled before ``acquire()`` returns cannot
+    leave a permit with no owner.
+    """
 
     def __init__(self, capacity):
         self.capacity = max(1, int(capacity))
         self._active = 0
+        self._reserved = 0
         self._waiters = deque()
         self._closed = False
 
     @property
     def active(self):
-        return self._active
+        return self._active + self._reserved
 
     @property
     def available(self):
-        return max(0, self.capacity - self._active)
+        return max(0, self.capacity - self.active)
 
     @property
     def waiting(self):
-        return sum(1 for waiter in self._waiters if not waiter.future.done())
+        return sum(
+            1 for waiter in self._waiters
+            if not waiter.future.done() and not waiter.granted
+        )
 
     @property
     def _value(self):
@@ -43,15 +53,23 @@ class DynamicLimiter:
     def locked(self):
         return self.available == 0
 
+    @asynccontextmanager
+    async def slot(self, timeout=None):
+        """Async context manager that owns one permit for the block."""
+        await self.acquire(timeout=timeout)
+        try:
+            yield self
+        finally:
+            self.release()
+
     async def acquire(self, timeout=None):
-        task = asyncio.current_task()
+        loop = asyncio.get_running_loop()
         if self._closed:
             raise RuntimeError("limiter is closed")
         if self._active < self.capacity and not self._waiters:
             self._active += 1
             return
 
-        loop = asyncio.get_running_loop()
         waiter = _Waiter(loop.create_future())
         self._waiters.append(waiter)
         self._wake()
@@ -61,33 +79,38 @@ class DynamicLimiter:
 
         def _on_timeout():
             nonlocal timed_out
-            if not waiter.future.done():
-                timed_out = True
-                waiter.future.cancel()
+            timed_out = True
+            if waiter.future.done():
+                return
+            if waiter.granted:
+                self._release_reservation(waiter, requeue=False)
+            waiter.future.cancel()
 
         if timeout is not None:
-            timer = loop.call_later(float(timeout), _on_timeout)
+            timer = loop.call_later(
+                float(timeout), _on_timeout
+            )
         try:
             try:
                 await waiter.future
             except asyncio.CancelledError:
-                if not waiter.granted:
-                    self._abandon(waiter)
+                self._release_reservation(waiter, requeue=False)
                 if timed_out:
                     raise TimeoutError from None
                 raise
             except BaseException:
-                self._abandon(waiter)
+                self._release_reservation(waiter, requeue=False)
                 raise
-            # A granted waiter owns a permit even before its task resumes. The
-            # owner/ holder is registered synchronously immediately after this
-            # method returns, so a yield here cannot change the permit count.
-            await asyncio.sleep(0)
+            if not self._consume_reservation(waiter):
+                raise asyncio.CancelledError
+            return
         finally:
             if timer is not None:
                 timer.cancel()
 
     def release(self):
+        if self._closed and self.active == 0:
+            return
         if self._active <= 0:
             raise RuntimeError("release without an active permit")
         self._active -= 1
@@ -103,29 +126,57 @@ class DynamicLimiter:
     def close(self):
         self._closed = True
         for waiter in tuple(self._waiters):
-            if not waiter.future.done():
+            if waiter.future.done():
+                self._release_reservation(waiter, requeue=False)
+            else:
                 waiter.future.cancel()
 
     def _wake(self):
         if self._closed:
             return
-        while self._waiters and self._active < self.capacity:
-            waiter = self._waiters.popleft()
-            if waiter.future.done():
-                continue
+        while self.active < self.capacity:
+            index = next(
+                (
+                    index for index, waiter in enumerate(self._waiters)
+                    if not waiter.future.done() and not waiter.granted
+                ),
+                None,
+            )
+            if index is None:
+                break
+            waiter = self._waiters[index]
+            self._reserved += 1
             waiter.granted = True
-            self._active += 1
             waiter.future.set_result(True)
 
-    def _abandon(self, waiter):
+    def _drop_waiter(self, waiter):
         try:
             self._waiters.remove(waiter)
         except ValueError:
             pass
-        if waiter.granted:
-            waiter.granted = False
-            self._active -= 1
-            self._wake()
+
+    def _consume_reservation(self, waiter):
+        """Turn this waiter's reservation into an owned active permit."""
+        if not waiter.granted:
+            return False
+        waiter.granted = False
+        self._reserved -= 1
+        self._active += 1
+        self._drop_waiter(waiter)
+        return True
+
+    def _release_reservation(self, waiter, *, requeue):
+        """Return a delivered-but-unclaimed permit without double counting."""
+        if not waiter.granted or self._reserved <= 0:
+            self._drop_waiter(waiter)
+            return False
+        waiter.granted = False
+        self._reserved -= 1
+        self._drop_waiter(waiter)
+        if requeue and not self._closed:
+            self._waiters.append(waiter)
+        self._wake()
+        return True
 
 
 class BudgetScheduler:
@@ -240,8 +291,10 @@ class BudgetScheduler:
             return False
         self._waiters[scope] += 1
         self._waiting_tasks.add(task)
+        acquired = False
         try:
             await self._chat.acquire(timeout=self.wait_seconds)
+            acquired = True
         except TimeoutError:
             event.stop_event()
             self.rejected += 1
@@ -256,8 +309,9 @@ class BudgetScheduler:
             self._waiters[scope] -= 1
             if not self._waiters[scope]:
                 del self._waiters[scope]
+            if self._closed and acquired:
+                self._chat.release()
         if self._closed:
-            self._chat.release()
             event.stop_event()
             return False
         self._holders.add(task)
@@ -276,13 +330,19 @@ class BudgetScheduler:
         if self._closed:
             raise RuntimeError("知伴正在停止")
         self._heavy_waiting.add(task)
+        acquired = False
         try:
             await self._heavy.acquire(timeout=self.wait_seconds)
+            acquired = True
         except TimeoutError as exc:
             self.resource_rejected += 1
             raise RuntimeError("重资源等待超时") from exc
         finally:
             self._heavy_waiting.discard(task)
+            if self._closed and acquired:
+                self._heavy.release()
+        if self._closed:
+            raise RuntimeError("知伴正在停止")
         self._heavy_owner = task
         return True
 
@@ -305,16 +365,19 @@ class BudgetScheduler:
             raise RuntimeError(f"{kind} 资源队列已满或正在停止")
         setattr(self, waiters_attr, getattr(self, waiters_attr) + 1)
         self._resource_waiting.add(task)
+        acquired = False
         try:
             await limiter.acquire(timeout=self.wait_seconds)
+            acquired = True
         except TimeoutError as exc:
             self.resource_rejected += 1
             raise RuntimeError(f"{kind} 资源等待超时") from exc
         finally:
             self._resource_waiting.discard(task)
             setattr(self, waiters_attr, getattr(self, waiters_attr) - 1)
+            if self._closed and acquired:
+                limiter.release()
         if self._closed:
-            limiter.release()
             raise RuntimeError("知伴正在停止")
 
     @asynccontextmanager

@@ -620,7 +620,11 @@ async function initPluginConfig() {
         "settings/index.html",
         window.MemeUI.getRouteQuery(),
       );
-      window.MemeUI.updateRoute?.(`${target}${hash ? `#${hash}` : ""}`);
+      const routedTarget = `${target}${hash ? `#${hash}` : ""}`;
+      window.MemeUI.updateRoute?.(routedTarget);
+      // A tab change must update the parent shell route as well. The bridge
+      // reuses the current frame for the same path and only updates its hash.
+      window.ZhibanModule?.navigate?.(routedTarget);
       return;
     }
     window.__zhibanRouteHash = hash;

@@ -176,7 +176,7 @@ class _UsageProviderProxy:
         model = getattr(self._provider, "model", None)
         return str(model) if model else None
 
-    def _record(self, response, status="completed", *, is_final=False):
+    def _record(self, response, status="completed", *, is_final=False, call_id=None):
         if self._usage is None or response is None:
             return
         try:
@@ -185,6 +185,7 @@ class _UsageProviderProxy:
                 source=self._source,
                 model=self._model(),
                 status=status,
+                call_id=call_id,
                 is_final=is_final,
             )
         except Exception:
@@ -192,11 +193,14 @@ class _UsageProviderProxy:
             pass
 
     async def text_chat(self, *args, **kwargs):
+        call_id = self._usage.new_call_id() if hasattr(self._usage, "new_call_id") else None
         try:
             response = await self._provider.text_chat(*args, **kwargs)
         except Exception:
             raise
-        self._record(response)
+        if call_id and response is not None and hasattr(self._usage, "begin_provider_call"):
+            self._usage.begin_provider_call(response, call_id)
+        self._record(response, call_id=call_id)
         return response
 
     def text_chat_stream(self, *args, **kwargs):
@@ -278,14 +282,18 @@ class _ModuleContext:
         return self._wrap_provider(await self._context.get_using_provider_async(*args, **kwargs))
 
     async def llm_generate(self, *args, **kwargs):
+        call_id = self._usage.new_call_id() if hasattr(self._usage, "new_call_id") else None
         response = await self._context.llm_generate(*args, **kwargs)
         if self._usage is not None and response is not None:
             try:
                 config = kwargs.get("chat_provider_id")
+                if call_id and hasattr(self._usage, "begin_provider_call"):
+                    self._usage.begin_provider_call(response, call_id)
                 self._usage.record_response(
                     response,
                     source=self._state.key,
                     model=str(config) if config else None,
+                    call_id=call_id,
                     is_final=True,
                 )
             except Exception:

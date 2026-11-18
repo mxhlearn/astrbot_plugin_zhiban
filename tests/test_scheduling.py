@@ -8,6 +8,7 @@ spec = importlib.util.spec_from_file_location("zhiban_scheduling", Path(__file__
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 BudgetScheduler = module.BudgetScheduler
+DynamicLimiter = module.DynamicLimiter
 
 
 class Event:
@@ -369,6 +370,137 @@ async def test_close_with_queued_chat_waiters_does_not_deadlock_or_double_releas
     assert all(results)
     assert scheduler._chat.active == 0
     assert scheduler._chat.available == 2
+
+
+async def _yield_once():
+    await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_granted_waiter_cancelled_before_delivery_returns_permit():
+    limiter = DynamicLimiter(1)
+    await limiter.acquire()
+
+    waiter = asyncio.create_task(limiter.acquire())
+    await _yield_once()
+    assert limiter.active == 1
+    assert limiter.waiting == 1
+
+    waiter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+    limiter.release()
+
+    next_waiter = asyncio.create_task(limiter.acquire(timeout=.1))
+    await asyncio.wait_for(next_waiter, .1)
+    assert limiter.active == 1
+    limiter.release()
+    assert limiter.active == 0
+    assert limiter.available == 1
+
+
+@pytest.mark.asyncio
+async def test_granted_waiter_yields_after_delivery_and_keeps_permit():
+    limiter = DynamicLimiter(1)
+    await limiter.acquire()
+
+    async def borrower():
+        await limiter.acquire()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        limiter.release()
+
+    borrower_task = asyncio.create_task(borrower())
+    await asyncio.sleep(.01)
+    borrower_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await borrower_task
+    limiter.release()
+
+    next_waiter = asyncio.create_task(limiter.acquire(timeout=.1))
+    await asyncio.wait_for(next_waiter, .1)
+    assert limiter.active == 1
+    limiter.release()
+    assert limiter.active == 0
+
+
+@pytest.mark.asyncio
+async def test_delivery_timeout_returns_own_permit_and_keeps_fifo():
+    limiter = DynamicLimiter(1)
+    await limiter.acquire()
+
+    timed_out = asyncio.create_task(limiter.acquire(timeout=.01))
+    with pytest.raises(TimeoutError):
+        await timed_out
+    assert limiter.active == 1
+
+    next_waiter = asyncio.create_task(limiter.acquire(timeout=.1))
+    await _yield_once()
+    limiter.release()
+    await asyncio.wait_for(next_waiter, .1)
+    assert limiter.active == 1
+    limiter.release()
+    assert limiter.active == 0
+
+
+@pytest.mark.asyncio
+async def test_close_after_grant_does_not_double_release():
+    limiter = DynamicLimiter(1)
+    await limiter.acquire()
+
+    waiter = asyncio.create_task(limiter.acquire(timeout=.1))
+    await _yield_once()
+    limiter.close()
+    with pytest.raises((asyncio.CancelledError, TimeoutError)):
+        await waiter
+    limiter.release()
+    limiter.release()
+    assert limiter.active == 0
+    assert limiter.available == 1
+
+    with pytest.raises(RuntimeError):
+        await limiter.acquire()
+
+
+@pytest.mark.asyncio
+async def test_single_limiter_capacity_changes_share_one_queue():
+    limiter = DynamicLimiter(1)
+    await limiter.acquire()
+    waiters = [asyncio.create_task(limiter.acquire(timeout=.2)) for _ in range(3)]
+    await _yield_once()
+    assert limiter.active == 1
+    assert limiter.waiting == 3
+
+    limiter.set_capacity(2)
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert limiter.active == 2
+    assert limiter.waiting == 2
+    assert [waiter.done() for waiter in waiters] == [True, False, False]
+    assert limiter.available == 0
+
+    limiter.set_capacity(1)
+    assert limiter.active == 2
+    limiter.release()
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert limiter.active == 1
+    assert limiter.waiting == 2
+    assert [waiter.done() for waiter in waiters] == [True, False, False]
+
+    limiter.release()
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert limiter.active == 1
+    assert [waiter.done() for waiter in waiters] == [True, True, False]
+
+    limiter.close()
+    limiter.release()
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert limiter.active == 0
+    assert limiter.waiting == 0
+    assert all(waiter.done() for waiter in waiters)
 
 
 async def _media_wait(scheduler):

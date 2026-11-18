@@ -251,6 +251,21 @@ test("embedded module exposes scoped navigation without enabling general URL tra
 
 });
 
+test("embedded module exposes onContext and replays the current route", async () => {
+  const bridge = await createBridge("meme", {
+    route: { path: "settings/index.html", subpage: "settings", hash: "models", subpageHash: "models", query: { view: "advanced" } },
+  });
+  await answerReady(bridge, "instance-token");
+  const seen = [];
+  const unsubscribe = bridge.window.ZhibanModule.onContext((context) => seen.push(context));
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].subpage, "settings");
+  assert.equal(seen[0].hash, "models");
+  assert.equal(seen[0].subpageHash, "models");
+  assert.equal(JSON.stringify(seen[0].query), JSON.stringify({ view: "advanced" }));
+  unsubscribe();
+});
+
 test("child navigation carries the parent-issued instance token", async () => {
   const bridge = await createBridge("meme");
   await answerReady(bridge, "instance-token");

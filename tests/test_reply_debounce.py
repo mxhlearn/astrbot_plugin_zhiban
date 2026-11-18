@@ -579,5 +579,106 @@ class ReplyDebounceProviderContextTests(unittest.IsolatedAsyncioTestCase):
         await coordinator.close()
 
 
+class ReplyDebounceDraftCapacityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_hot_config_reuses_one_draft_limiter_without_adding_permits(self):
+        provider = FakeProvider("<<reply>>", delay=.12)
+        coordinator = make_coordinator(provider, thinking=True, draft_concurrency=1)
+        original = coordinator._draft_slots
+
+        first = FakeEvent("第一句", umo="private:a", seq=1)
+        second = FakeEvent("第二句", umo="private:b", seq=2)
+        first_task = asyncio.create_task(coordinator.hold(first))
+        second_task = asyncio.create_task(coordinator.hold(second))
+        await wait_until(lambda: coordinator._draft_slots.waiting == 1)
+
+        coordinator.configure(draft_concurrency=2)
+        self.assertIs(coordinator._draft_slots, original)
+        self.assertEqual(original.capacity, 2)
+        await asyncio.gather(first_task, second_task)
+        self.assertEqual(provider.calls, 2)
+
+        coordinator.configure(draft_concurrency=1)
+        self.assertIs(coordinator._draft_slots, original)
+        self.assertEqual(original.capacity, 1)
+        self.assertEqual(original.active, 0)
+        await coordinator.close()
+
+    async def test_draft_waiter_is_not_counted_as_final_chat_ticket(self):
+        provider = FakeProvider("<<reply>>", delay=.12)
+        admitted = []
+        coordinator = make_coordinator(
+            provider, thinking=True, draft_concurrency=1, settle=.0
+        )
+
+        async def admit(event):
+            admitted.append(event)
+            return True
+
+        first = FakeEvent("第一句", umo="private:a", seq=1)
+        second = FakeEvent("第二句", umo="private:b", seq=2)
+        first_task = asyncio.create_task(coordinator.hold(first, admit))
+        second_task = asyncio.create_task(coordinator.hold(second, admit))
+        await wait_until(lambda: coordinator._draft_slots.waiting == 1)
+        self.assertEqual(coordinator._draft_slots.active, 1)
+        self.assertEqual(len(admitted), 0)
+
+        await asyncio.gather(first_task, second_task)
+        self.assertEqual(len(admitted), 2)
+        self.assertEqual(coordinator._draft_slots.active, 0)
+        await coordinator.close()
+
+    async def test_draft_waiting_slot_cancellation_releases_capacity(self):
+        class BlockingProvider(FakeProvider):
+            def __init__(self):
+                super().__init__("<<reply>>")
+                self.entered = asyncio.Event()
+
+            async def text_chat(self, **kwargs):
+                self.calls += 1
+                self.entered.set()
+                await asyncio.Event().wait()
+
+        provider = BlockingProvider()
+        coordinator = make_coordinator(
+            provider,
+            thinking=True,
+            draft_concurrency=1,
+            draft_timeout=.5,
+            max_window=.8,
+        )
+        first = FakeEvent("第一条", umo="private:a", seq=1)
+        first_task = asyncio.create_task(coordinator.hold(first))
+        await wait_until(lambda: provider.entered.is_set())
+
+        second = FakeEvent("第二条", umo="private:b", seq=2)
+        second_task = asyncio.create_task(coordinator.hold(second))
+        await wait_until(lambda: coordinator._draft_slots.waiting == 1)
+
+        second_task.cancel()
+        first_task.cancel()
+        await asyncio.gather(first_task, second_task, return_exceptions=True)
+
+        self.assertEqual(coordinator._draft_slots.active, 0)
+        self.assertEqual(coordinator._draft_slots.waiting, 0)
+        await coordinator.close()
+
+    async def test_close_clears_waiting_draft_slot_once(self):
+        provider = FakeProvider("<<reply>>", delay=.2)
+        coordinator = make_coordinator(provider, thinking=True, draft_concurrency=1)
+        first = FakeEvent("第一句", umo="private:a", seq=1)
+        second = FakeEvent("第二句", umo="private:b", seq=2)
+        first_task = asyncio.create_task(coordinator.hold(first))
+        second_task = asyncio.create_task(coordinator.hold(second))
+        await wait_until(lambda: coordinator._draft_slots.waiting == 1)
+
+        await coordinator.close()
+        await asyncio.gather(first_task, second_task, return_exceptions=True)
+        self.assertEqual(coordinator._draft_slots.active, 0)
+        self.assertEqual(coordinator._draft_slots.waiting, 0)
+        await asyncio.sleep(0)
+        self.assertEqual(coordinator._draft_slots.active, 0)
+        self.assertEqual(coordinator._draft_slots.available, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

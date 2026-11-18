@@ -1061,13 +1061,19 @@ async function createModuleFrameElement(item, requestedRoute = null) {
         fetchTimedOut = true;
         controller.abort();
       }, 12000);
-      const response = await fetch(pageUrl.href, { credentials: "same-origin", cache: "no-store", signal: controller.signal });
-      clearTimeout(fetchTimer);
-      fetchTimer = null;
-      if (activeModuleFetch === controller) activeModuleFetch = null;
-      if (!response.ok) throw new Error(`模块页面返回 HTTP ${response.status}`);
-      source = await response.text();
-      if (fetchEpoch === modulePageCache.epoch) writeCachedModulePage(cacheKey, source, item.key);
+      let response;
+      try {
+        response = await fetch(pageUrl.href, { credentials: "same-origin", cache: "no-store", signal: controller.signal });
+        if (!response.ok) throw new Error(`模块页面返回 HTTP ${response.status}`);
+        source = await response.text();
+      } finally {
+        clearTimeout(fetchTimer);
+        fetchTimer = null;
+        if (activeModuleFetch === controller) activeModuleFetch = null;
+      }
+      if (sequence !== moduleFrameSequence || !host.isConnected ||
+          fetchEpoch !== modulePageCache.epoch) return;
+      writeCachedModulePage(cacheKey, source, item.key);
     }
     if (sequence !== moduleFrameSequence || !host.isConnected) return;
     host.dataset.stage = "bridge_wait";

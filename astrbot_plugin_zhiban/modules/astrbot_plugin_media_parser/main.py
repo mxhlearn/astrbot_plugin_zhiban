@@ -946,17 +946,19 @@ class VideoParserPlugin(Star):
                     translation_task,
                     translation_metadata_list,
                 )
-                archive_task = asyncio.create_task(
-                    asyncio.to_thread(
-                        build_zip_archive,
-                        processed_metadata_list,
-                        translated_metadata_list=translation_metadata_list,
-                        output_dir=cfg.download.cache_dir,
-                        max_total_bytes=int(
-                            cfg.message.archive.max_total_size_mb * 1024 * 1024
-                        ),
-                    )
-                )
+                async def build_archive_with_budget():
+                    async with self._media_budget_context():
+                        return await asyncio.to_thread(
+                            build_zip_archive,
+                            processed_metadata_list,
+                            translated_metadata_list=translation_metadata_list,
+                            output_dir=cfg.download.cache_dir,
+                            max_total_bytes=int(
+                                cfg.message.archive.max_total_size_mb * 1024 * 1024
+                            ),
+                        )
+
+                archive_task = asyncio.create_task(build_archive_with_budget())
                 (
                     archive_path,
                     archive_cancellation,
@@ -1024,14 +1026,15 @@ class VideoParserPlugin(Star):
                         meta["metadata_text_node"] = notice
                         break
 
-            (
-                text_metadata_images,
-                rendered_registered,
-            ) = await self._render_text_metadata_output(
-                build_result,
-                translation_nodes,
-                cfg,
-            )
+            async with self._media_budget_context():
+                (
+                    text_metadata_images,
+                    rendered_registered,
+                ) = await self._render_text_metadata_output(
+                    build_result,
+                    translation_nodes,
+                    cfg,
+                )
             relay_registered = relay_registered or rendered_registered
             aggregatable_nodes = [
                 meta["link_nodes"]

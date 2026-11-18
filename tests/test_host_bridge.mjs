@@ -361,6 +361,38 @@ test("detached frames ignore late handshakes and app errors", async () => {
   assert.equal(bridge.events.length, 0);
 });
 
+test("late SSE subscribe is cancelled when the frame detaches", async () => {
+  const bridge = await createBridge();
+  await bridge.sendFromChild({ kind: "ready", module: "meme" });
+  const token = bridge.sent[0].message.context.appReadyToken;
+  bridge.sent.length = 0;
+  let resolveSubscribe;
+  const callsForLateSse = bridge.calls;
+  bridge.parent.subscribeSSE = (endpoint, handlers, params) => {
+    callsForLateSse.push(["sse", endpoint]);
+    return new Promise((resolve) => { resolveSubscribe = resolve; });
+  };
+  bridge.parent.unsubscribeSSE = async (id) => bridge.calls.push(["unsubscribe", id]);
+  const pending = bridge.sendFromChild({
+    kind: "request",
+    requestId: "sse-late",
+    token,
+    action: "sse:subscribe",
+    endpoint: "packs/stream",
+    subscriptionId: "late-child",
+    params: {},
+  });
+  bridge.detach();
+  await new Promise((resolve) => setImmediate(resolve));
+  if (typeof resolveSubscribe !== "function") {
+    assert.ok(bridge.calls.some((call) => call[0] === "unsubscribe"));
+    return;
+  }
+  resolveSubscribe("late-sub");
+  await pending;
+  assert.deepEqual(bridge.calls.at(-1), ["unsubscribe", "late-sub"]);
+});
+
 test("detached frames ignore late navigation", async () => {
   const bridge = await createBridge();
   await bridge.sendFromChild({ kind: "ready", module: "meme" });

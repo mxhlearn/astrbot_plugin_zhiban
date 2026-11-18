@@ -13,6 +13,7 @@ import json
 import sqlite3
 import threading
 import uuid
+import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone, tzinfo
@@ -26,6 +27,34 @@ DEFAULT_SCOPE = "zhiban"
 DEFAULT_RETENTION_DAYS = 180
 DEFAULT_MAX_RECORDS = 200_000
 _MISSING = object()
+_CALL_ID_PREFIX = "anonymous-call:"
+_USAGE_CALL_ID_ATTR = "_zhiban_usage_call_id"
+_MAX_RESPONSE_CALL_ID_CACHE = 512
+
+
+def _new_usage_call_id() -> str:
+    """Return a fresh opaque identity for one real provider call."""
+
+    return _CALL_ID_PREFIX + uuid.uuid4().hex
+
+
+def _valid_usage_call_id(value: Any) -> str | None:
+    """Validate an explicitly propagated call id without normalizing payloads."""
+
+    if isinstance(value, bool) or not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if text.startswith(_CALL_ID_PREFIX):
+        suffix = text[len(_CALL_ID_PREFIX) :]
+        if len(suffix) != 32:
+            return None
+        try:
+            uuid.UUID(hex=suffix)
+        except (ValueError, AttributeError, TypeError):
+            return None
+    return text
 
 
 @dataclass(frozen=True)
@@ -268,6 +297,12 @@ class UsageService:
         self._started_lock = threading.Lock()
         self._started_at: str | None = None
         self._schema_ready = False
+        # Explicit call ids are the primary propagation mechanism.  This small
+        # cache is only a compatibility bridge for hooks that run before the
+        # caller upgrade.  It is keyed by ``id(response)`` only as an in-process
+        # lookup hint.  The paired weak reference is always dereferenced and
+        # identity-checked before use, so an address cannot reuse a stale id.
+        self._response_call_ids: dict[int, tuple[Any, str]] = {}
         if str(self.db_path) != ":memory:":
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
@@ -330,6 +365,136 @@ class UsageService:
                 connection.close()
 
     @staticmethod
+    def _can_weakref(value: Any) -> bool:
+        try:
+            weakref.ref(value)
+        except TypeError:
+            return False
+        return True
+
+    @staticmethod
+    def _response_call_id_attribute(response: Any) -> str | None:
+        value = getattr(response, _USAGE_CALL_ID_ATTR, None)
+        return _valid_usage_call_id(value)
+
+    def _lookup_response_call_id(self, response: Any) -> str | None:
+        entry = self._response_call_ids.get(id(response))
+        if entry is None:
+            return None
+        reference, call_id = entry
+        if reference() is response:
+            return call_id
+        # Recovered object address: retire the stale entry immediately.
+        self._response_call_ids.pop(id(response), None)
+        return None
+
+    def _prune_response_call_ids(self) -> None:
+        """Bound the compatibility cache by dropping collected responses."""
+
+        if len(self._response_call_ids) < _MAX_RESPONSE_CALL_ID_CACHE:
+            return
+        for address, (reference, _) in list(self._response_call_ids.items()):
+            if reference() is None:
+                self._response_call_ids.pop(address, None)
+
+    def _associate_response_call_id(self, response: Any, call_id: str) -> None:
+        if self._can_weakref(response):
+            self._prune_response_call_ids()
+            self._response_call_ids[id(response)] = (weakref.ref(response), call_id)
+
+    def new_call_id(self) -> str:
+        """Create the identity for one real provider call.
+
+        The caller should pass the returned value to ``record_*`` through the
+        call's own context (or event extra data) so every hook for that call
+        shares one id.  Retries should call this again for a new attempt.
+        """
+
+        return _new_usage_call_id()
+
+    def begin_provider_call(self, response: Any, call_id: str | None = None) -> str:
+        """Bind a call id to a response before any usage hook observes it.
+
+        This is a compatibility bridge for callers that cannot yet pass the
+        call id explicitly.  It keeps only a weak reference to the response and
+        never inspects or persists the response payload.
+        """
+
+        resolved = _valid_usage_call_id(call_id) or self.new_call_id()
+        try:
+            setattr(response, _USAGE_CALL_ID_ATTR, resolved)
+        except Exception:
+            pass
+        self._associate_response_call_id(response, resolved)
+        return resolved
+
+    def finish_provider_call(
+        self,
+        response: Any,
+        *,
+        call_id: str | None = None,
+        clear_binding: bool = True,
+    ) -> str | None:
+        """Finish a call and return the id that hooks should reuse.
+
+        Explicit ``call_id`` always wins.  Otherwise a response-level binding
+        made by ``begin_provider_call`` is used.  The binding is removed by
+        default after recording so the id cannot leak into a later retry that
+        happens to reuse the same object address.
+        """
+
+        resolved = _valid_usage_call_id(call_id)
+        if resolved is None:
+            resolved = self._response_call_id_attribute(response)
+        if resolved is None:
+            resolved = self._lookup_response_call_id(response)
+        if resolved is not None and clear_binding:
+            self._response_call_ids.pop(id(response), None)
+            try:
+                if getattr(response, _USAGE_CALL_ID_ATTR, None) == resolved:
+                    delattr(response, _USAGE_CALL_ID_ATTR)
+            except Exception:
+                pass
+        return resolved
+
+    def _resolve_accounting_id(
+        self,
+        response: Any,
+        *,
+        request_id: str | None,
+        call_id: str | None,
+    ) -> str:
+        """Choose a durable dedupe id without ever using an object address."""
+
+        if request_id is not None and str(request_id).strip():
+            return str(request_id).strip()
+
+        explicit = _valid_usage_call_id(call_id)
+        if explicit is not None:
+            return explicit
+
+        response_id = _field(response, "id")
+        if (
+            response_id is not _MISSING
+            and response_id is not None
+            and str(response_id).strip()
+        ):
+            return str(response_id).strip()
+
+        propagated = self._response_call_id_attribute(response)
+        if propagated is None:
+            propagated = self._lookup_response_call_id(response)
+        if propagated is not None:
+            return propagated
+
+        # Last-resort compatibility for unmodified callers.  A fresh UUID is
+        # generated per record call; repeated hooks for the same response can
+        # still dedupe through the bounded in-process binding recorded here.
+        generated = self.new_call_id()
+        self._associate_response_call_id(response, generated)
+        return generated
+
+    @staticmethod
     def _started_payload(started_at: str, now_utc: datetime, tz: tzinfo, label: str) -> dict[str, Any]:
         try:
             started = _as_utc(started_at)
@@ -383,17 +548,19 @@ class UsageService:
         model: str | None = None,
         status: str | None = None,
         request_id: str | None = None,
+        call_id: str | None = None,
         occurred_at: datetime | str | None = None,
         scope: str = DEFAULT_SCOPE,
         usage_missing: bool | None = None,
         is_final: bool | None = None,
     ) -> bool:
-        """Record one final model response, idempotently by request id.
+        """Record one final model response, idempotently by call identity.
 
         ``True`` means a new row was inserted or an existing provisional row
         was upgraded with better status/usage.  ``False`` means no accounting
-        changed.  Retries normally have distinct provider response ids and are
-        therefore counted separately; repeated hooks for one response are not.
+        changed.  Each real provider call must supply a fresh ``call_id``;
+        retries receive a new id and are counted separately, while repeated
+        hooks reporting one call reuse the same id and collapse to one row.
 
         AstrBot may yield a terminal stream chunk with ``is_chunk=True``.  Such
         chunks are ignored unless the caller explicitly marks ``is_final``.
@@ -407,19 +574,11 @@ class UsageService:
 
         self.ensure_started()
         resolved_usage = _response_usage(response, usage_missing)
-        raw_request_id = request_id
-        if raw_request_id is None or not str(raw_request_id).strip():
-            raw_request_id = _field(response, "id")
-        if (
-            raw_request_id is _MISSING
-            or raw_request_id is None
-            or not str(raw_request_id).strip()
-        ):
-            # AstrBot may invoke both an event hook and a provider proxy for
-            # the same response. The opaque object identity deduplicates those
-            # hooks without hashing or persisting message content.
-            raw_request_id = "anonymous:" + str(id(response))
-        request_text = str(raw_request_id).strip()
+        request_text = self._resolve_accounting_id(
+            response,
+            request_id=request_id,
+            call_id=call_id,
+        )
         occurred_utc = _as_utc(occurred_at)
         record_scope = _clean_label(scope, DEFAULT_SCOPE)
         record_source = _clean_label(source, "unknown")
@@ -518,6 +677,7 @@ class UsageService:
         model: str | None = None,
         status: str | None = None,
         request_id: str | None = None,
+        call_id: str | None = None,
         occurred_at: datetime | str | None = None,
         scope: str = DEFAULT_SCOPE,
         usage_missing: bool | None = None,
@@ -525,8 +685,9 @@ class UsageService:
     ) -> bool:
         """Record an event response, reading only the usage-source marker.
 
-        The event's ``extra._zhiban_usage_source`` is preferred when present.
-        No event text, message chain, or sender metadata is inspected.
+        The event's ``extra._zhiban_usage_source`` and
+        ``extra._zhiban_usage_call_id`` are preferred when present.  No event
+        text, message chain, or sender metadata is inspected.
         """
 
         extra = getattr(event, "extra", None)
@@ -534,12 +695,15 @@ class UsageService:
             marker = extra.get("_zhiban_usage_source")
             if marker:
                 source = str(marker)
+            if call_id is None:
+                call_id = _valid_usage_call_id(extra.get(_USAGE_CALL_ID_ATTR))
         return self.record_response(
             response,
             source=source,
             model=model,
             status=status,
             request_id=request_id,
+            call_id=call_id,
             occurred_at=occurred_at,
             scope=scope,
             usage_missing=usage_missing,

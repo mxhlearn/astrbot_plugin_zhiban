@@ -335,12 +335,13 @@
           "reply_debounce": {
             "type": "object",
             "description": "思维链式消息防抖",
-            "hint": "仅接管私聊连续补充；群聊继续由聊天互动原有防抖协调。内部草稿调用会产生额外 Provider 费用，草稿内容不写入长期记忆或最终回复。",
+            "hint": "仅接管私聊连续补充；群聊继续由聊天互动原有防抖协调。内部草稿调用会产生额外 Provider 费用；草稿仅作为最终回复上下文，不直接展示，也不写入长期记忆。",
             "items": {
               "enabled": {
                 "type": "bool",
                 "description": "启用消息防抖",
-                "default": true
+                "default": true,
+                "hint": "仅接管私聊连续补充；群聊继续由聊天互动原有防抖协调。内部草稿调用会产生额外 Provider 费用；草稿仅作为最终回复上下文，不直接展示，也不写入长期记忆。"
               },
               "enable_thinking": {
                 "type": "bool",
@@ -358,7 +359,7 @@
               "think_style": {
                 "type": "text",
                 "description": "草稿语气覆盖",
-                "hint": "留空跟随当前人格；填写后只把这段语气说明发送给草稿模型，不发送完整人格。",
+                "hint": "留空使用 AstrBot 当前生效基础人格与知伴已批准补充；填写后完全覆盖，不再发送完整人格。",
                 "default": ""
               },
               "think_voice": {
@@ -451,7 +452,8 @@
               "forward_images": {
                 "type": "bool",
                 "description": "合并窗口内图片",
-                "default": true
+                "default": true,
+                "hint": "仅在私聊窗口内有界携带已有图片引用；视觉草稿按 Provider 支持的 modalities 决定是否传入，非视觉模型文本降级；不缓存二进制，也不新增独立视觉请求。"
               },
               "draft_concurrency": {
                 "type": "int",

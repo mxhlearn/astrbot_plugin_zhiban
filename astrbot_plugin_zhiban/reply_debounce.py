@@ -21,6 +21,8 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 
+from .scheduling import DynamicLimiter
+
 _MARKER_RE = re.compile(r"<<\s*(reply|wait)\s*(\d{1,3})?\s*>>", re.IGNORECASE)
 _TRUNCATED = "…[已截断]"
 _ORPHAN_OMITTED = "[另有补充消息因窗口容量上限未展开]"
@@ -318,7 +320,7 @@ class ReplyDebounceCoordinator:
         self._pending: dict[str, _Window] = {}
         self._orphaned: dict[str, list[_Window]] = {}
         self._draft_tasks: set[asyncio.Task[Any]] = set()
-        self._draft_slots = asyncio.Semaphore(self._config.draft_concurrency)
+        self._draft_slots = DynamicLimiter(self._config.draft_concurrency)
         self._closed = False
         self._closed_event = asyncio.Event()
         self._order = 0
@@ -344,10 +346,8 @@ class ReplyDebounceCoordinator:
             raise ValueError(f"unknown reply debounce settings: {sorted(unknown)}")
         values.update(changes)
         updated = ReplyDebounceConfig.normalized(values)
-        if updated.draft_concurrency != self._config.draft_concurrency:
-            # Existing tasks keep the old semaphore; new tasks use the new one.
-            self._draft_slots = asyncio.Semaphore(updated.draft_concurrency)
         self._config = updated
+        self._draft_slots.set_capacity(updated.draft_concurrency)
         return self._config
 
     def eligible(self, event: Any) -> bool:
@@ -600,7 +600,7 @@ class ReplyDebounceCoordinator:
             self._draft_tasks.discard(task)
 
     async def _draft_in_slot(self, window: _Window) -> _Verdict | None:
-        async with self._draft_slots:
+        async with self._draft_slots.slot():
             return await self._draft(window)
 
     async def _draft(self, window: _Window) -> _Verdict | None:

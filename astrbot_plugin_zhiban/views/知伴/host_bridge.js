@@ -114,9 +114,6 @@
     // arbitrary origin or an absolute path that is not rooted at this module.
     const rawPathText = rawTarget.split(/[?#]/, 1)[0];
     const absolute = /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(rawTarget);
-    if (!absolute && (/\?/.test(rawTarget) || /#/.test(rawTarget))) {
-      throw new Error("模块子页面路径无效");
-    }
     if (absolute && !/\/modules\/[^/?#]+\//.test(decodeURIComponent(rawPathText))) {
       throw new Error("模块子页面不在允许范围");
     }
@@ -304,6 +301,12 @@
           }),
         };
         const hostId = await api.subscribeSSE(proxyEndpoint, handlers, payload.params);
+        if (state.destroyed || frames.get(frame) !== state) {
+          if (hostId !== undefined && typeof api.unsubscribeSSE === "function") {
+            try { await api.unsubscribeSSE(hostId); } catch { /* Frame already detached. */ }
+          }
+          throw new Error("模块页面已卸载");
+        }
         state.subscriptions.set(childId, hostId);
         return { subscriptionId: childId };
       }

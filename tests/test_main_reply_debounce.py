@@ -7,10 +7,10 @@ from astrbot_plugin_zhiban.main import ZhibanPlugin
 
 
 class FakeEvent:
-    def __init__(self):
+    def __init__(self, _text="", *, umo=None):
         self.extra = {}
         self.stopped = False
-        self.unified_msg_origin = "private:1"
+        self.unified_msg_origin = umo or "private:1"
 
     def set_extra(self, key, value):
         self.extra[key] = value
@@ -103,20 +103,67 @@ class MainReplyDebounceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(event.stopped)
         self.assertEqual(plugin.reply_debounce.merged, [(event, request)])
 
-    async def test_style_falls_back_to_approved_persona(self):
-        class Persona:
+    async def test_style_combines_current_base_persona_and_approved_supplement(self):
+        class BasePersona:
+            prompt = "基础语气"
+
+        class Conversation:
+            persona_id = "conv-persona"
+
+        class ConversationManager:
+            def get_current_conversation(self, umo):
+                self.umo = umo
+                return Conversation()
+
+        class PersonaManager:
+            async def resolve_selected_persona(self, *, umo, conversation_persona_id, platform_name):
+                self.args = (umo, conversation_persona_id, platform_name)
+                return (conversation_persona_id, BasePersona(), None, False)
+
+        class Supplement:
             async def approved_text(self, scope):
                 self.scope = scope
-                return "温柔"
+                return "补充语气"
 
         plugin = object.__new__(ZhibanPlugin)
-        plugin.persona = Persona()
-        event = FakeEvent()
+        plugin.persona = Supplement()
+        plugin.context = SimpleNamespace(
+            persona_manager=PersonaManager(),
+            conversation_manager=ConversationManager(),
+        )
+        event = FakeEvent("测试", umo="aiocqhttp:friend:u1")
         event.get_sender_id = lambda: "u1"
         event.is_private_chat = lambda: True
         event.get_platform_name = lambda: "aiocqhttp"
         text = await plugin._reply_debounce_style(event)
-        self.assertEqual(text, "温柔")
+        self.assertIn("基础语气", text)
+        self.assertIn("补充语气", text)
+        self.assertEqual(
+            plugin.context.persona_manager.args,
+            ("aiocqhttp:friend:u1", "conv-persona", "aiocqhttp"),
+        )
+
+    async def test_style_falls_back_when_host_persona_resolution_fails(self):
+        class Supplement:
+            async def approved_text(self, scope):
+                return "补充语气"
+
+        class PersonaManager:
+            async def resolve_selected_persona(self, **kwargs):
+                raise RuntimeError("persona unavailable")
+
+        plugin = object.__new__(ZhibanPlugin)
+        plugin.persona = Supplement()
+        plugin.context = SimpleNamespace(
+            persona_manager=PersonaManager(),
+            conversation_manager=None,
+        )
+        event = FakeEvent("测试", umo="aiocqhttp:friend:u1")
+        event.get_sender_id = lambda: "u1"
+        event.is_private_chat = lambda: True
+        event.get_platform_name = lambda: "aiocqhttp"
+        text = await plugin._reply_debounce_style(event)
+        self.assertEqual(text, "补充语气")
 
 
 if __name__ == "__main__":
