@@ -1,0 +1,185 @@
+{
+  "schema_version": 3,
+  "generated_files": [
+    "brush/assets/index-DAO1kLIa.js",
+    "brush/assets/style-BKFiXi-I.css",
+    "brush/index.html",
+    "heart/assets/index-BL7DV78x.js",
+    "heart/assets/style-LSpSUt7F.css",
+    "heart/index.html",
+    "meme/a_manage/index.html",
+    "meme/a_manage/pack-transfer.js",
+    "meme/a_manage/script.js",
+    "meme/a_manage/style.css",
+    "meme/catalog/index.html",
+    "meme/catalog/script.js",
+    "meme/catalog/style.css",
+    "meme/catalog/updates.js",
+    "meme/index.html",
+    "meme/semantic/index.html",
+    "meme/semantic/script.js",
+    "meme/semantic/style.css",
+    "meme/settings/config.js",
+    "meme/settings/index.html",
+    "meme/settings/script.js",
+    "meme/settings/setup-state.js",
+    "meme/settings/storage-guide.js",
+    "meme/settings/style.css",
+    "meme/shared/collection-status.js",
+    "meme/shared/fa.min.css",
+    "meme/shared/preview.js",
+    "meme/shared/ui.css",
+    "meme/shared/ui.js",
+    "meme/shared/webfonts/fa-brands-400.woff2",
+    "meme/shared/webfonts/fa-regular-400.woff2",
+    "meme/shared/webfonts/fa-solid-900.woff2",
+    "meme/shared/webfonts/fa-v4compatibility.woff2",
+    "memory/app.js",
+    "memory/appearance.js",
+    "memory/art-direction.css",
+    "memory/assets/base.min.js",
+    "memory/assets/graph-3d.LICENSE.txt",
+    "memory/assets/graph-3d.min.js",
+    "memory/assets/graph.min.js",
+    "memory/assets/styles.min.css",
+    "memory/graph-2d.js",
+    "memory/graph-3d-core.js",
+    "memory/graph-3d-gravity.js",
+    "memory/graph-3d-worker.js",
+    "memory/graph-3d.css",
+    "memory/graph-3d.js",
+    "memory/graph-interaction.js",
+    "memory/graph-layout-core.js",
+    "memory/graph-layout-worker.js",
+    "memory/graph-renderer.js",
+    "memory/graph-shared.js",
+    "memory/graph-topology.js",
+    "memory/graph-ui.js",
+    "memory/i18n.js",
+    "memory/index.html",
+    "memory/modules/api-client.js",
+    "memory/modules/index.js",
+    "memory/modules/memory-page.js",
+    "memory/modules/peek-panel.js",
+    "memory/modules/prompt-page.js",
+    "memory/modules/recall-page.js",
+    "memory/modules/settings-page.js",
+    "memory/modules/system-page.js",
+    "memory/modules/utils.js",
+    "memory/styles.css",
+    "memory/themes.css",
+    "memory/vendor/LUCIDE_LICENSE",
+    "memory/vendor/lucide-subset.js",
+    "memory/workflows.css",
+    "music/app.js",
+    "music/index.html",
+    "music/style.css",
+    "qzone/app.js",
+    "qzone/index.html",
+    "qzone/style.css",
+    "search/index.html",
+    "tts/app.js",
+    "tts/index.html",
+    "tts/style.css"
+  ],
+  "adaptations": {
+    "scope": "mapped upstream resources",
+    "mode": "authenticated SDK and module bridge injection",
+    "theme": "first-paint head CSS plus module_bridge.js controlled light-green overrides",
+    "motion": "in-panel module loading with reduced-motion opt-out",
+    "non_html_policy": "only registered adaptations may differ; all other non-HTML resources are copied byte-for-byte",
+    "unchanged_non_html_assets": true,
+    "adapted_assets": [
+      {
+        "path": "brush/index.html",
+        "sha256": "92456633a9b2557de57fdae0d5fb6755368183c94c548960c503ead26be50703",
+        "reason": "authenticated SDK and module bridge injection",
+        "source": "astrbot_plugin_angel_brush/pages/brush-config/index.html"
+      },
+      {
+        "path": "heart/assets/index-BL7DV78x.js",
+        "sha256": "41fe5cb88b6e1c2ab4625668ca620d6f6ff1fd59d0fd48b3b4ddfd45922fdb1f",
+        "reason": "rebuilt from the adapted heart webui for Zhiban branding, Chinese copy, and the controlled light-green theme",
+        "source": "astrbot_plugin_angel_heart/pages/chat-config/assets/index-BL7DV78x.js"
+      },
+      {
+        "path": "heart/assets/style-LSpSUt7F.css",
+        "sha256": "4202604d7f28d3a5bbeeecc50c32ca23354c8a24b9ea8e5c25c072a7bdc9f258",
+        "reason": "rebuilt from the adapted heart webui for Zhiban branding, Chinese copy, and the controlled light-green theme",
+        "source": "astrbot_plugin_angel_heart/pages/chat-config/assets/style-LSpSUt7F.css"
+      },
+      {
+        "path": "heart/index.html",
+        "sha256": "e52f5e08a508573307ddae9e65f560d8d31495fce0c6161fdc4bd346719f8ec6",
+        "reason": "authenticated SDK and module bridge injection",
+        "source": "astrbot_plugin_angel_heart/pages/chat-config/index.html"
+      },
+      {
+        "path": "meme/a_manage/index.html",
+        "sha256": "131eba138d0a6757bd93fc9c756cc402575fda77fbc13150399be4cd7c5704ac",
+        "reason": "authenticated SDK and module bridge injection",
+        "source": "astrbot_plugin_meme_manager/pages/app/a_manage/index.html"
+      },
+      {
+        "path": "meme/catalog/index.html",
+        "sha256": "fe3687f0544e93886da4641fa39dca186706db1f671f84e2658a1eeb8bb36f80",
+        "reason": "authenticated SDK and module bridge injection",
+        "source": "astrbot_plugin_meme_manager/pages/app/catalog/index.html"
+      },
+      {
+        "path": "meme/index.html",
+        "sha256": "d50801677d6c1ceb06b30da433cbce838dc2414fcb0216e403aed9a6adf76cd1",
+        "reason": "entry redirect materialized as the management page with a controlled base URL for sandboxed embedding",
+        "source": "astrbot_plugin_meme_manager/pages/app/a_manage/index.html"
+      },
+      {
+        "path": "meme/semantic/index.html",
+        "sha256": "9c131fcfe0f6590f4ff031801e86d166b459430676b1a307c874abbd2b7b3540",
+        "reason": "authenticated SDK and module bridge injection",
+        "source": "astrbot_plugin_meme_manager/pages/app/semantic/index.html"
+      },
+      {
+        "path": "meme/settings/index.html",
+        "sha256": "3382c7dc93f66d1d3a9bf67476e956bad1895a9703ff339d723ba49feed2e299",
+        "reason": "authenticated SDK and module bridge injection",
+        "source": "astrbot_plugin_meme_manager/pages/app/settings/index.html"
+      },
+      {
+        "path": "memory/index.html",
+        "sha256": "27e42e5994965e847063f19e33c672d012a8d815265effbefe160c0a0c11e0fc",
+        "reason": "authenticated SDK and module bridge injection",
+        "source": "astrbot_plugin_livingmemory/pages/dashboard/index.html"
+      },
+      {
+        "path": "music/index.html",
+        "sha256": "13c6e456d33531765436e3e0ba973d2b44daae08b274d80c76aa4474c8b05b47",
+        "reason": "authenticated SDK and module bridge injection",
+        "source": "astrbot_plugin_listen_music/pages/accounts/index.html"
+      },
+      {
+        "path": "qzone/app.js",
+        "sha256": "6eae61333cf7e2102ef95dcbc294ac873ce6384c9dd3cc479f8c0cd51cd2dfbe",
+        "reason": "removed the page-local 5s bridge-ready timeout so the host bridge owns handshake timing and QQ activity can recover from slow startup",
+        "source": "astrbot_plugin_qzone_ultra/pages/qzone/app.js"
+      },
+      {
+        "path": "qzone/index.html",
+        "sha256": "993a071d1c920dffda5dd3fc78883aad3eb76ebce185c905df474c03bc6aee83",
+        "reason": "authenticated SDK and module bridge injection",
+        "source": "astrbot_plugin_qzone_ultra/pages/qzone/index.html"
+      },
+      {
+        "path": "search/index.html",
+        "sha256": "6dc4a49c69a5ef39583d10d68b62426cb7d504a43eca14251c868cf3d23999f9",
+        "reason": "authenticated SDK and module bridge injection",
+        "source": "astrbot_plugin_anysearch/pages/search/index.html"
+      },
+      {
+        "path": "tts/index.html",
+        "sha256": "837ceb1d5fc72c3efc948ed52318361aab3be948b1f32c189372e1db0452ee25",
+        "reason": "authenticated SDK and module bridge injection",
+        "source": "astrbot_plugin_breeze_tts/views/panel/index.html"
+      }
+    ]
+  }
+}

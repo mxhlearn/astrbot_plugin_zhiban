@@ -27,7 +27,7 @@
     "common.disabled":    { zh: "未启用", en: "Disabled", ru: "Отключено" },
 
     /* ---- Title / Header ---- */
-    "page.title":         { zh: "LivingMemory 控制台", en: "LivingMemory Console", ru: "Консоль LivingMemory" },
+    "page.title":         { zh: "记忆成长", en: "记忆成长", ru: "记忆成长" },
     "header.lang":        { zh: "语言", en: "Language", ru: "Язык" },
     "language.toast":     { zh: "语言：{0}", en: "Language: {0}", ru: "Язык: {0}" },
 
@@ -624,7 +624,7 @@
     "origin.auto": "自動要約",
     "origin.import": "インポート",
     "origin.resummarize": "再要約",
-    "page.title": "LivingMemory コンソール",
+    "page.title": "记忆成长",
     "pagination.next": "次へ",
     "pagination.prev": "前へ",
     "prompt.customized": "カスタマイズ済み",
@@ -855,11 +855,24 @@
     });
   }
 
-  // bootstrap
-  currentLang = detectLanguage();
-  document.documentElement.setAttribute("lang", currentLang === "zh" ? "zh-CN" : currentLang === "ru" ? "ru" : "en");
-  document.addEventListener("DOMContentLoaded", () => {
-    applyI18n();
+  // Render Chinese fallback before the browser paints; then reconcile the
+  // host/local locale without ever replacing a decided language with English.
+  applyI18n();
+  const applyDetectedLanguage = () => {
+    const detected = detectLanguage();
+    if (detected !== currentLang) {
+      window.setLanguage(detected, { persist: false, source: "detect" });
+    } else {
+      document.documentElement.setAttribute(
+        "lang",
+        detected === "zh" ? "zh-CN" : detected === "ru" ? "ru" : detected === "ja" ? "ja" : "en"
+      );
+    }
     listenBridgeLocale();
-  });
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", applyDetectedLanguage, { once: true });
+  } else {
+    applyDetectedLanguage();
+  }
 })();

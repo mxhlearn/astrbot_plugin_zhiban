@@ -4,7 +4,6 @@
   const modules = [
     { key: 'heart', label: '聊天互动', logo: 'heart.png', page: true, group: '聊天系统', groupKey: 'chat' },
     { key: 'search', label: '联网搜索', logo: 'search.png', page: true, group: '聊天系统', groupKey: 'chat' },
-    { key: 'parser', label: '万能解析', logo: 'parser.png', page: false, group: '聊天系统', groupKey: 'chat' },
     { key: 'memory', label: '记忆成长', logo: 'memory.png', page: true, group: '记忆成长', groupKey: 'memory' },
     { key: 'meme', label: '表情互动', logo: 'meme.png', page: true, group: '表达创作', groupKey: 'creative' },
     { key: 'tts', label: '语音回复', logo: 'tts.png', page: true, group: '表达创作', groupKey: 'creative' },
@@ -22,7 +21,7 @@
     { key: 'creative', label: '表达创作' },
     { key: 'social', label: 'QQ 社交' },
   ];
-  const apiNames = { heart: 'astrbot_plugin_angel_heart', search: 'astrbot_plugin_anysearch', parser: 'astrbot_plugin_media_parser', memory: 'astrbot_plugin_livingmemory', meme: 'meme_manager', tts: 'astrbot_plugin_breeze_tts', brush: 'astrbot_plugin_angel_brush', music: 'astrbot_plugin_listen_music', eye: 'astrbot_plugin_angel_eye', qzone: 'astrbot_plugin_qzone_ultra', qqprofile: 'astrbot_plugin_qqprofile' };
+  const apiNames = { heart: 'astrbot_plugin_angel_heart', search: 'astrbot_plugin_anysearch', memory: 'astrbot_plugin_livingmemory', meme: 'meme_manager', tts: 'astrbot_plugin_breeze_tts', brush: 'astrbot_plugin_angel_brush', music: 'astrbot_plugin_listen_music', eye: 'astrbot_plugin_angel_eye', qzone: 'astrbot_plugin_qzone_ultra', qqprofile: 'astrbot_plugin_qqprofile' };
   const appPluginName = 'astrbot_plugin_zhiban';
   const moduleScript = document.currentScript || document.querySelector('script[data-module-key]');
   const moduleKey = moduleScript?.dataset.moduleKey;
@@ -716,7 +715,7 @@
     footer.className = 'zb-footer';
     const footerStrong = document.createElement('strong');
     footerStrong.textContent = 'AstrBot · OneBot 11';
-    footer.append(footerStrong, document.createTextNode('十二个模块，一个知伴'));
+    footer.append(footerStrong, document.createTextNode('十一个模块，一个知伴'));
     root.replaceChildren(brand, primary, sectionLabel, list, actions, footer);
     if (!existing) {
       document.body.prepend(root);

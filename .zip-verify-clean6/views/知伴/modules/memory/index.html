@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head><script id="zhiban-embed-bootstrap">(function(){var el=document.documentElement;if(!el||!el.dataset)return;if(el.dataset.zhibanEmbedded==="true"||el.dataset.zhibanHostFrame==="true")return;var embedded=new URLSearchParams(location.search).get("embedded")==="frame";el.dataset.zhibanEmbedded=embedded?"true":"false";if(embedded){el.dataset.zhibanHostFrame="true";}})();</script><meta name="view-transition" content="same-origin"><meta name="color-scheme" content="light"><meta name="zhiban-runtime-marker" content="module"><style id="zhiban-head-theme">:root{--bg-app:#f5f8f4;--bg-base:#f5f8f4;--bg-sidebar:#eef5ec;--bg-card:#ffffff;--bg-hover:#e7f0e7;--bg-active:#ddeedc;--bg-input:#ffffff;--bg-overlay:rgba(255,255,255,.94);--bg-tint:#eef5ec;--bg-toolbar:#ffffff;--bg-table-head:#eef5ec;--screen-overlay:rgba(30,50,38,.24);--graph-surface:#f8fbf7;--border-light:#dce6da;--border-normal:#bdcfbb;--border-color:#dce6da;--border-focus:#2f6b4f;--text-primary:#24382c;--text-secondary:#617367;--text-tertiary:#718477;--text-inverse:#ffffff;--accent:#2f6b4f;--accent-color:#2f6b4f;--accent-light:#ddeedc;--accent-hover:#24563f;--signal:#9dc7ac;--signal-soft:#e8f3e7;--coral:#9b5c46;--cyan:#3f7661;--gold:#b07b36;--success:#2f6b4f;--success-light:#ddeedc;--warning:#8a5a1f;--warning-light:#f7ecd9;--danger:#b0443f;--danger-light:#f8e4e1;--danger-hover:#8f342f;--node-topic:#78a94b;--node-person:#2a9e96;--node-fact:#c58c2a;--node-summary:#df6d62;--node-other:#74868a;--primary-color:#2f6b4f;--primary:#2f6b4f;--link-color:#2f6b4f}:root[data-theme="dark"]{--bg-app:#111811;--bg-base:#111811;--bg-sidebar:#162117;--bg-card:#1b261c;--bg-hover:#243528;--bg-active:#2a3f2d;--bg-input:#1b261c;--bg-overlay:rgba(17,24,17,.95);--bg-tint:#162117;--bg-toolbar:#1b261c;--bg-table-head:#162117;--screen-overlay:rgba(0,0,0,.55);--graph-surface:#131c14;--border-light:#354637;--border-normal:#4b6150;--border-color:#354637;--border-focus:#8fc7a5;--text-primary:#eef5ef;--text-secondary:#aebbad;--text-tertiary:#91a394;--text-inverse:#101611;--accent:#8fc7a5;--accent-color:#8fc7a5;--accent-light:#263a2b;--accent-hover:#b3d9c1;--signal:#b3d9c1;--signal-soft:#263a2b;--coral:#d79a84;--cyan:#6fb59a;--gold:#d3a35b;--success:#8fc7a5;--success-light:#203427;--warning:#e4b066;--warning-light:#3b2d19;--danger:#f08b84;--danger-light:#3c211f;--danger-hover:#f6aaa4;--node-topic:#8fbe62;--node-person:#56b8ae;--node-fact:#d9a64c;--node-summary:#e88276;--node-other:#92a4a8;--primary-color:#8fc7a5;--primary:#8fc7a5;--link-color:#8fc7a5}:root{color-scheme:light}html{background:var(--bg-app);color:var(--text-primary)}body{background:var(--bg-app);color:var(--text-primary)}:root[data-theme="dark"]{color-scheme:dark}:is(.n-button--primary-type,.btn-primary,.button-primary,.el-button--primary,.ant-btn-primary){background:var(--accent);border-color:var(--accent);color:var(--text-inverse)}</style><script src="/api/plugin/page/bridge-sdk.js"></script><script id="zhiban-module-adapter" src="../../module_bridge.ca49336df080.js?v=ca49336df080" data-module-key="memory"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title data-i18n="page.title">记忆成长</title>
+    <link rel="stylesheet" href="./assets/styles.min.css" />
+    <script src="./assets/base.min.js"></script>
+    <script src="./vendor/lucide-subset.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <!-- Navigation -->
+      <aside class="sidebar" aria-label="模块导航">
+        <nav class="sidebar-nav" aria-label="模块页面">
+          <button class="nav-item active" data-page="graph" data-i18n-aria="nav.graph" aria-label="知识图谱">
+            <i data-lucide="network" aria-hidden="true"></i>
+            <span data-i18n="nav.graph">知识图谱</span>
+          </button>
+          <button class="nav-item" data-page="memory" data-i18n-aria="nav.memory" aria-label="记忆管理">
+            <i data-lucide="database" aria-hidden="true"></i>
+            <span data-i18n="nav.memory">记忆管理</span>
+          </button>
+          <button class="nav-item" data-page="recall" data-i18n-aria="nav.recall" aria-label="召回测试">
+            <i data-lucide="scan-search" aria-hidden="true"></i>
+            <span data-i18n="nav.recall">召回测试</span>
+          </button>
+          <button class="nav-item" data-page="system" data-i18n-aria="nav.system" aria-label="系统概览">
+            <i data-lucide="chart-no-axes-combined" aria-hidden="true"></i>
+            <span data-i18n="nav.system">系统概览</span>
+          </button>
+          <button class="nav-item" data-page="prompts" data-i18n-aria="nav.prompts" aria-label="提示词管理">
+            <i data-lucide="braces" aria-hidden="true"></i>
+            <span data-i18n="nav.prompts">提示词管理</span>
+          </button>
+          <button class="nav-item" data-page="settings" data-i18n-aria="nav.settings" aria-label="设置">
+            <i data-lucide="square-pen" aria-hidden="true"></i>
+            <span data-i18n="nav.settings">设置</span>
+          </button>
+        </nav>
+        <details class="lang-menu" id="lang-menu">
+          <summary class="nav-item" id="lang-toggle" data-i18n-aria="header.lang" aria-label="语言">
+            <i data-lucide="languages" aria-hidden="true"></i>
+            <span id="lang-label" data-i18n="header.lang">语言</span>
+          </summary>
+          <div class="lang-options">
+            <button type="button" class="lang-option" data-lang="zh">中文</button>
+            <button type="button" class="lang-option" data-lang="en">English</button>
+            <button type="button" class="lang-option" data-lang="ru">Русский</button>
+            <button type="button" class="lang-option" data-lang="ja">日本語</button>
+          </div>
+        </details>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content">
+
+        <!-- Page: Graph -->
+        <section class="page active" id="page-graph">
+          <header class="page-header">
+            <div class="page-heading"><span class="page-title" data-i18n="nav.graph">知识图谱</span></div>
+            <div class="page-actions">
+              <select id="graph-view-mode" class="input input-sm" data-i18n-aria="graph.viewMode" style="width:auto" aria-label="图谱维度">
+                <option value="2d" data-i18n="graph.view2d">2D 平面</option>
+                <option value="3d" data-i18n="graph.view3d">3D 空间</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" id="graph-reset-view" data-i18n-aria="graph.resetView" aria-label="重置视角">
+                <i data-lucide="rotate-ccw" aria-hidden="true"></i>
+                <span data-i18n="graph.resetView">重置视角</span>
+              </button>
+              <input type="text" id="graph-session-filter" list="graph-session-options" data-i18n-aria="graph.sessionPh" class="input input-sm" data-i18n-placeholder="graph.sessionPh" placeholder="可选：限定 session_id" style="width:180px" aria-label="可选：限定 session_id">
+              <datalist id="graph-session-options"></datalist>
+              <button class="btn btn-secondary btn-sm" id="graph-overview-btn" data-i18n-aria="graph.overviewBtn" aria-label="全量图谱">
+                <i data-lucide="layout-dashboard" aria-hidden="true"></i>
+                <span data-i18n="graph.overviewBtn">全量图谱</span>
+              </button>
+            </div>
+          </header>
+          <div class="page-body graph-page-body">
+            <div class="stat-pills" id="graph-stat-pills">
+              <div class="stat-pill"><div class="stat-pill-value" id="gs-total">--</div><div class="stat-pill-label" data-i18n="stats.total">总记忆</div></div>
+              <div class="stat-pill"><div class="stat-pill-value" id="gs-nodes">--</div><div class="stat-pill-label" data-i18n="graph.nodes">节点</div></div>
+              <div class="stat-pill"><div class="stat-pill-value" id="gs-edges">--</div><div class="stat-pill-label" data-i18n="graph.edges">关系</div></div>
+              <div class="stat-pill"><div class="stat-pill-value" id="gs-sessions">--</div><div class="stat-pill-label" data-i18n="stats.sessions">活跃会话</div></div>
+            </div>
+            <div class="graph-canvas-container" style="flex:1">
+              <div class="graph-canvas-state" id="graph-canvas-state"></div>
+              <div id="graph-canvas" class="graph-canvas">
+                <div id="graph-view-2d" class="graph-view"></div>
+                <div id="graph-view-3d" class="graph-view" hidden></div>
+              </div>
+            </div>
+            <div class="graph-legend" id="graph-legend"></div>
+            <div class="graph-toolbar">
+              <div class="graph-operation">
+                <input type="text" id="graph-query-input" data-i18n-aria="graph.queryPh" class="input" data-i18n-placeholder="graph.queryPh" placeholder="输入人物、主题、事实或整句，查看召回到的图谱子图" aria-label="输入人物、主题、事实或整句，查看召回到的图谱子图">
+                <button class="btn btn-primary btn-sm" id="graph-search-btn" data-i18n-aria="graph.searchBtn" aria-label="检索图谱">
+                  <i data-lucide="search" aria-hidden="true"></i>
+                  <span data-i18n="graph.searchBtn">检索图谱</span>
+                </button>
+              </div>
+            </div>
+            <div id="graph-space-controls" class="graph-space-controls" hidden>
+              <button id="graph-motion-btn" class="btn btn-secondary btn-sm" data-i18n="graph.pauseMotion" aria-pressed="false">暂停运转</button>
+              <button id="graph-relations-btn" class="btn btn-secondary btn-sm" data-i18n="graph.allRelations" aria-pressed="false">全部关系</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Page: Memory -->
+        <section class="page" id="page-memory">
+          <header class="page-header">
+            <div class="page-heading"><span class="page-title" data-i18n="nav.memory">记忆管理</span></div>
+            <button id="mem-refresh" class="btn btn-secondary btn-sm"><i data-lucide="refresh-cw" aria-hidden="true"></i><span data-i18n="common.refresh">刷新</span></button>
+          </header>
+          <div class="page-body memory-page-body">
+            <form class="filter-bar" id="memory-filters">
+              <input type="text" id="mem-keyword" data-i18n-aria="filter.keyword" class="input" data-i18n-placeholder="filter.keyword" placeholder="关键字（支持 memory_id / 内容搜索）" aria-label="关键字（支持 memory_id / 内容搜索）">
+              <input type="text" id="mem-session" data-i18n-aria="filter.sessionId" class="input" data-i18n-placeholder="filter.sessionId" placeholder="会话 ID（可选）" style="max-width:200px" aria-label="会话 ID（可选）">
+              <select id="mem-status" data-i18n-aria="flow.status" class="select input" aria-label="状态">
+                <option value="all" data-i18n="filter.statusAll">全部状态</option>
+                <option value="active" data-i18n="filter.statusActive">活跃</option>
+                <option value="archived" data-i18n="filter.statusArchived">已归档</option>
+                <option value="deleted" data-i18n="filter.statusDeleted">已删除</option>
+              </select>
+              <select id="mem-type" data-i18n-aria="flow.type" class="select input" aria-label="类型">
+                <option value="all" data-i18n="filter.typeAll">全部类型</option>
+                <option value="GENERAL" data-i18n="type.general">通用</option>
+                <option value="FACT" data-i18n="type.fact">事实</option>
+                <option value="EVENT" data-i18n="type.event">事件</option>
+                <option value="PREFERENCE" data-i18n="type.preference">偏好</option>
+                <option value="OPINION" data-i18n="type.opinion">观点</option>
+                <option value="FACTUAL" data-i18n="type.factual">事实</option>
+                <option value="EPISODIC" data-i18n="type.episodic">事件</option>
+                <option value="RELATIONAL" data-i18n="type.relational">关系</option>
+                <option value="PLANNED" data-i18n="type.planned">计划</option>
+              </select>
+              <select id="mem-sort" data-i18n-aria="flow.sort" class="select input" aria-label="排序">
+                <option value="created_desc" data-i18n="sort.createdDesc">最新创建</option>
+                <option value="created_asc" data-i18n="sort.createdAsc">最早创建</option>
+                <option value="updated_desc" data-i18n="sort.updatedDesc">最近更新</option>
+                <option value="importance_desc" data-i18n="sort.importanceDesc">重要性高到低</option>
+                <option value="importance_asc" data-i18n="sort.importanceAsc">重要性低到高</option>
+                <option value="type_asc" data-i18n="sort.typeAsc">类型 A-Z</option>
+              </select>
+              <button type="submit" class="btn btn-primary btn-sm" data-i18n="filter.apply">筛选</button>
+              <button type="button" id="mem-reset-filters" class="btn btn-secondary btn-sm" data-i18n="flow.resetFilters">重置筛选</button>
+            </form>
+            <details class="memory-transfer" id="memory-transfer">
+              <summary data-i18n="flow.transfer">导入与导出</summary>
+              <div class="transfer-sections">
+                <section>
+                  <h3 data-i18n="transfer.export">导出</h3>
+                  <p id="mem-export-scope" data-i18n="flow.exportAll">导出全部记忆，不受上方筛选条件限制。</p>
+                  <div class="transfer-controls">
+                    <select id="mem-transfer-format" data-i18n-aria="transfer.formatTitle" class="select input" style="width:auto" data-i18n-title="transfer.formatTitle" aria-label="导出文件格式">
+                      <option value="json">JSON</option>
+                      <option value="csv">CSV</option>
+                    </select>
+                    <button class="btn btn-sm btn-secondary" id="mem-export" data-i18n-title="transfer.exportTitle">
+                      <i data-lucide="download" aria-hidden="true"></i>
+                      <span data-i18n="transfer.export">导出</span>
+                    </button>
+                  </div>
+                </section>
+                <section>
+                  <h3 data-i18n="transfer.import">导入</h3>
+                  <p data-i18n="flow.importSteps">选择文件 → 检查预览 → 确认导入</p>
+                  <div class="transfer-controls">
+                    <select id="mem-import-duplicates" data-i18n-aria="transfer.duplicateTitle" class="select input" style="width:auto" data-i18n-title="transfer.duplicateTitle" aria-label="导入重复项处理方式">
+                      <option value="skip" data-i18n="transfer.skipDuplicates">跳过重复</option>
+                      <option value="allow" data-i18n="transfer.allowDuplicates">允许重复</option>
+                    </select>
+                    <button class="btn btn-sm btn-secondary" id="mem-import" data-i18n-title="transfer.importTitle">
+                      <i data-lucide="upload" aria-hidden="true"></i>
+                      <span data-i18n="transfer.import">导入</span>
+                    </button>
+                  </div>
+                  <input type="file" id="mem-import-file" accept=".json,.csv,application/json,text/csv" hidden />
+                </section>
+              </div>
+            </details>
+            <div id="transfer-feedback" class="request-feedback" role="status" aria-live="polite" hidden></div>
+            <div class="memory-selection" id="memory-selection" hidden>
+              <span id="mem-selection-count" role="status"></span>
+              <button type="button" class="btn btn-sm btn-secondary" id="mem-clear-selection" data-i18n="flow.clearSelection">取消选择</button>
+              <button class="btn btn-sm btn-secondary" id="mem-batch-edit" disabled data-i18n-title="batchEdit.title">
+                <i data-lucide="pencil" aria-hidden="true"></i>
+                <span id="mem-batch-edit-label" data-i18n="batchEdit.button">批量编辑 ({0})</span>
+              </button>
+              <button class="btn btn-sm btn-danger" id="mem-delete-selected" disabled data-i18n-title="delete.selectedTitle">
+                <i data-lucide="trash-2" aria-hidden="true"></i>
+                <span id="mem-delete-selected-label" data-i18n="delete.selected">删除所选 ({0})</span>
+              </button>
+            </div>
+            <div class="table-container">
+              <div id="memory-feedback" class="request-feedback" role="status" aria-live="polite" hidden>
+                <span id="memory-feedback-message"></span>
+                <button id="memory-retry" class="btn btn-sm btn-secondary" type="button" data-i18n="common.retry" hidden>重试</button>
+              </div>
+              <div class="table-scroll" id="memories-scroll">
+              <table class="data-table" id="memories-table">
+                <thead>
+                  <tr>
+                    <th class="cell-select"><input type="checkbox" id="mem-select-all" data-i18n-aria="delete.selectAll" aria-label="选择当前页全部记忆" /></th>
+                    <th class="cell-id" data-i18n="table.id">记忆 ID</th>
+                    <th class="cell-summary" data-i18n="table.summary">摘要</th>
+                    <th class="cell-type" data-i18n="table.type">类型</th>
+                    <th class="cell-importance" data-i18n="table.importance">重要性</th>
+                    <th class="cell-status" data-i18n="table.status">状态</th>
+                    <th class="cell-created" data-i18n="table.created">创建时间</th>
+                  </tr>
+                </thead>
+                <tbody id="memories-body">
+                  <tr><td colspan="7" class="table-empty" data-i18n="table.noData">暂无数据</td></tr>
+                </tbody>
+              </table>
+              </div>
+              <div class="pagination">
+                <label class="pagination-size">
+                  <span data-i18n="common.perPage">每页</span>
+                  <select id="mem-page-size" class="select input" style="width:auto">
+                    <option value="20" data-i18n="common.perPage20">20 条/页</option>
+                    <option value="50" data-i18n="common.perPage50">50 条/页</option>
+                    <option value="100" data-i18n="common.perPage100">100 条/页</option>
+                  </select>
+                </label>
+                <div class="pagination-controls">
+                  <button class="btn btn-sm btn-ghost" id="mem-prev" disabled><i data-lucide="arrow-left" aria-hidden="true"></i><span data-i18n="pagination.prev">上一页</span></button>
+                  <span class="pagination-info" id="mem-pagination-info"></span>
+                  <button class="btn btn-sm btn-ghost" id="mem-next" disabled><span data-i18n="pagination.next">下一页</span><i data-lucide="arrow-right" aria-hidden="true"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Page: 召回测试 -->
+        <section class="page" id="page-recall">
+          <header class="page-header">
+            <div class="page-heading"><span class="page-title" data-i18n="nav.recall">召回测试</span></div>
+          </header>
+          <div class="page-body">
+            <div class="recall-form-section">
+              <textarea id="recall-query" data-i18n-aria="recall.queryPh" class="input textarea" rows="3" data-i18n-placeholder="recall.queryPh" placeholder="输入查询语句测试召回效果" aria-label="输入查询语句测试召回效果"></textarea>
+              <div class="recall-form-row">
+                <div class="recall-form-field" style="max-width:200px">
+                  <label for="recall-k" class="recall-form-label" data-i18n="recall.kLabel">结果数 (k)</label>
+                  <div class="slider-group">
+                    <input type="range" id="recall-k" min="1" max="50" value="5" />
+                    <span class="slider-value" id="recall-k-value">5</span>
+                  </div>
+                </div>
+                <div class="recall-form-field" style="max-width:280px">
+                  <label for="recall-session" class="recall-form-label" data-i18n="recall.sessionLabel">会话 ID (可选)</label>
+                  <input type="text" id="recall-session" class="input input-sm" data-i18n-placeholder="recall.sessionPh" placeholder="输入会话 ID 以过滤特定会话的记忆（支持多种格式）" />
+                </div>
+                <button class="btn btn-primary" id="recall-search-btn"><i data-lucide="scan-search" aria-hidden="true"></i><span data-i18n="recall.searchBtn">执行召回</span></button>
+              </div>
+            </div>
+            <p class="workflow-hint" data-i18n="flow.recallShortcut">快捷键：Ctrl / Cmd + Enter</p>
+            <div class="recall-results-header hidden" id="recall-stats">
+              <span id="recall-count-text"></span>
+              <span class="text-tertiary" id="recall-time-text"></span>
+              <span class="text-tertiary" id="recall-context-text"></span>
+            </div>
+            <div id="recall-feedback" class="request-feedback" role="status" aria-live="polite" hidden></div>
+            <div id="recall-results" aria-busy="false"><div class="table-empty" data-i18n="recall.empty">暂无召回结果 · 请输入查询内容并执行召回</div></div>
+          </div>
+        </section>
+
+        <!-- Page: System -->
+        <section class="page" id="page-system">
+          <header class="page-header">
+            <div class="page-heading"><span class="page-title" data-i18n="nav.system">系统概览</span></div>
+          </header>
+          <div class="page-body">
+            <div id="system-feedback" class="request-feedback" role="status" aria-live="polite" hidden>
+              <span id="system-feedback-message"></span>
+              <button id="system-retry" class="btn btn-sm btn-secondary" type="button" data-i18n="common.retry" hidden>重试</button>
+            </div>
+            <div id="system-background-status" class="request-feedback" role="status" aria-live="polite" hidden>
+              <span id="system-background-status-message"></span>
+            </div>
+            <div class="stat-cards" id="system-stat-cards">
+              <div class="stat-card"><div class="stat-card-value" id="ss-total">--</div><div class="stat-card-label" data-i18n="stats.total">总记忆</div></div>
+              <div class="stat-card"><div class="stat-card-value" id="ss-active">--</div><div class="stat-card-label" data-i18n="stats.active">活跃</div></div>
+              <div class="stat-card"><div class="stat-card-value" id="ss-archived">--</div><div class="stat-card-label" data-i18n="stats.archived">已归档</div></div>
+              <div class="stat-card"><div class="stat-card-value" id="ss-deleted">--</div><div class="stat-card-label" data-i18n="stats.deleted">已删除</div></div>
+              <div class="stat-card"><div class="stat-card-value" id="ss-nodes">--</div><div class="stat-card-label" data-i18n="stats.graphNodes">图谱节点</div></div>
+              <div class="stat-card"><div class="stat-card-value" id="ss-atoms">--</div><div class="stat-card-label" data-i18n="stats.atoms">原子记忆</div></div>
+            </div>
+            <div class="system-grid">
+              <div class="system-panel">
+                <div class="system-panel-title" data-i18n="system.importanceDistribution">重要性分布</div>
+                <div class="bar-chart" id="importance-chart"></div>
+              </div>
+              <div class="system-panel">
+                <div class="system-panel-title" data-i18n="system.atomTypes">原子类型</div>
+                <div class="bar-chart" id="atom-chart"></div>
+              </div>
+            </div>
+            <div class="system-panel mb-6">
+              <div class="system-panel-title" data-i18n="system.consolidationTitle">记忆整合</div>
+              <div class="consolidation-meta" id="consolidation-meta"></div>
+              <div class="stat-pills" style="margin-top:10px">
+                <div class="stat-pill"><div class="stat-pill-value" id="cons-consolidated">--</div><div class="stat-pill-label" data-i18n="system.consolidatedCount">已整合</div></div>
+                <div class="stat-pill"><div class="stat-pill-value" id="cons-archived">--</div><div class="stat-pill-label" data-i18n="stats.archived">已归档</div></div>
+              </div>
+              <button class="btn btn-primary btn-sm" id="cons-run-btn" style="margin-top:12px">
+                <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                <span data-i18n="system.consolidationRun">立即整合</span>
+              </button>
+              <span class="text-tertiary" id="cons-run-result" style="margin-left:10px;font-size:12px"></span>
+            </div>
+            <div class="system-panel mb-6" style="margin-top:0">
+              <div class="system-panel-title" data-i18n="system.sessionsTitle">会话（按记忆条数）</div>
+              <div class="session-list" id="session-list"></div>
+            </div>
+            <div class="system-panel">
+              <div class="system-panel-title" data-i18n="system.versionBackups">版本备份</div>
+              <div class="backup-list" id="backup-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Page: 提示词管理 -->
+        <section class="page" id="page-prompts">
+          <header class="page-header">
+            <div class="page-heading"><span class="page-title" data-i18n="nav.prompts">提示词管理</span></div>
+          </header>
+          <div class="page-body">
+            <div id="prompt-feedback" class="request-feedback" role="status" aria-live="polite" hidden>
+              <span id="prompt-feedback-message"></span>
+              <button id="prompt-retry" class="btn btn-sm btn-secondary" type="button" data-i18n="common.retry" hidden>重试</button>
+            </div>
+            <div id="prompt-content"></div>
+            <div class="prompt-editor hidden" id="prompt-editor">
+              <div class="prompt-editor-header">
+                <span class="prompt-editor-title" id="prompt-editor-title"></span>
+                <span class="prompt-editor-status" id="prompt-editor-status"></span>
+              </div>
+              <div class="prompt-editor-vars-row" id="prompt-editor-vars-row">
+                <span class="prompt-editor-vars-label" data-i18n="prompt.variables">可用变量</span>
+                <span id="prompt-editor-vars"></span>
+              </div>
+              <textarea id="prompt-editor-textarea" class="input textarea prompt-editor-textarea" rows="20" spellcheck="false"></textarea>
+              <p id="prompt-editor-feedback" class="workflow-hint" role="status" hidden></p>
+              <div class="prompt-editor-actions">
+                <button class="btn btn-secondary" id="prompt-cancel-btn"><i data-lucide="x" aria-hidden="true"></i><span data-i18n="common.cancel">取消</span></button>
+                <button class="btn btn-secondary" id="prompt-reset-btn"><i data-lucide="rotate-ccw" aria-hidden="true"></i><span data-i18n="prompt.reset">载入默认内容</span></button>
+                <button class="btn btn-primary" id="prompt-save-btn"><i data-lucide="save" aria-hidden="true"></i><span data-i18n="common.save">保存</span></button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Page: Settings (advanced config moved out of the host page) -->
+        <section class="page" id="page-settings">
+          <header class="page-header">
+            <div class="page-heading"><span class="page-title" data-i18n="nav.settings">设置</span></div>
+          </header>
+          <div class="page-body">
+            <div id="settings-feedback" class="request-feedback" role="status" aria-live="polite" hidden>
+              <span id="settings-feedback-message"></span>
+              <button id="settings-retry" class="btn btn-sm btn-secondary" type="button" data-i18n="common.retry" hidden>重试</button>
+            </div>
+            <div class="settings-toolbar">
+              <p class="settings-note" data-i18n="settings.reloadHint">高级配置集中在插件页面，保存后请重载插件使全部组件生效。</p>
+              <div class="settings-actions">
+                <input class="input settings-search" id="settings-search" type="search" data-i18n-placeholder="settings.searchPlaceholder" data-i18n-aria="settings.searchPlaceholder" aria-label="搜索配置项…">
+                <button class="btn btn-secondary btn-sm" id="settings-expand-all" type="button" data-i18n="settings.expandAll">展开全部</button>
+                <button class="btn btn-secondary btn-sm" id="settings-collapse-all" type="button" data-i18n="settings.collapseAll">收起全部</button>
+                <button class="btn btn-primary" id="settings-save-btn" type="button" data-i18n="settings.save">保存设置</button>
+              </div>
+            </div>
+            <div id="settings-container"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="discard-dialog" class="discard-dialog" aria-labelledby="discard-title" aria-describedby="discard-message">
+      <form method="dialog">
+        <h2 id="discard-title" data-i18n="flow.unsavedTitle">有未保存的修改</h2>
+        <p id="discard-message" data-i18n="flow.unsavedMessage">离开或替换内容会丢弃当前修改。是否放弃？</p>
+        <div class="discard-actions">
+          <button class="btn btn-secondary" value="cancel" autofocus data-i18n="flow.keepEditing">继续编辑</button>
+          <button class="btn btn-danger" value="discard" data-i18n="flow.discard">放弃修改</button>
+        </div>
+      </form>
+    </dialog>
+
+
+    <!-- Peek Panel -->
+    <div class="peek-overlay" id="peek-overlay"></div>
+    <aside class="peek-panel" id="peek-panel" aria-hidden="true" inert>
+      <div class="peek-header">
+        <div>
+          <div id="peek-badge"></div>
+          <div class="peek-title" id="peek-title">--</div>
+        </div>
+        <button class="peek-close" id="peek-close" data-i18n-title="common.close" aria-label="关闭">
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="peek-body" id="peek-body"></div>
+    </aside>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="./assets/graph.min.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

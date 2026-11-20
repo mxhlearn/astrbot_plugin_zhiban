@@ -17,6 +17,4 @@ networkx>=3.0
 jieba>=0.42.1
 pytz>=2021.3
 aiosqlite>=0.20.0
-cryptography>=43
 qrcode[pil]>=8.0
-playwright>=1.49

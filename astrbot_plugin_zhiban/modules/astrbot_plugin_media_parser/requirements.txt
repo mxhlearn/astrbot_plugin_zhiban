@@ -1,5 +1,0 @@
-aiohttp>=3.9
-cryptography>=43
-qrcode[pil]>=8.0
-pillow>=10
-playwright>=1.49

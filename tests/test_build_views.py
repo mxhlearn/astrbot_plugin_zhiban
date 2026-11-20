@@ -59,7 +59,7 @@ class BuildViewsTests(unittest.TestCase):
     def test_five_primary_groups_keep_all_modules_reachable(self):
         app_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "app.js").read_text(encoding="utf-8")
         index_source = (Path(__file__).parents[1] / "astrbot_plugin_zhiban" / "views" / "知伴" / "index.html").read_text(encoding="utf-8")
-        self.assertEqual(len(build_views_module.MODULES), 12)
+        self.assertEqual(len(build_views_module.MODULES), 11)
         self.assertNotIn("filter", {item["key"] for item in build_views_module.MODULES})
         expected_groups = {
             "overview": "总览",
@@ -73,7 +73,6 @@ class BuildViewsTests(unittest.TestCase):
         for module, group, group_key in (
             ("heart", "聊天系统", "chat"),
             ("search", "聊天系统", "chat"),
-            ("parser", "聊天系统", "chat"),
             ("proactive", "聊天系统", "chat"),
             ("eye", "聊天系统", "chat"),
             ("memory", "记忆成长", "memory"),
@@ -104,7 +103,7 @@ class BuildViewsTests(unittest.TestCase):
         self.assertIn("statusRequestInFlight", app_source)
         self.assertIn("runViewUpdate", app_source)
         self.assertIn('@view-transition { navigation: auto; }', index_source)
-        self.assertIn('十二个模块，一个知伴', index_source)
+        self.assertIn('十一个模块，一个知伴', index_source)
         self.assertIn("createModuleFrameElement(", app_source)
         self.assertNotIn("navigatePage(new URL(`modules/${item.page}/index.html`", app_source)
         self.assertIn("frame.setAttribute(\"sandbox\", \"allow-scripts allow-forms allow-downloads\")", app_source)
@@ -194,7 +193,7 @@ class BuildViewsTests(unittest.TestCase):
             self.assertIn("DeepSeek V4.1 Flash", source)
             self.assertIn("回复防抖、Anysearch 联网搜索、缓存与调度等代码实现", source)
             self.assertIn("AstrBot 运行时使用部署者自行配置的 Provider，与上述开发工具相互独立", source)
-            self.assertIn("3,438 项测试通过（根测试 215 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28 + QQ 动态模块 454）", source)
+            self.assertIn("3,434 项测试通过（根测试 211 + 图片模块 12 + 表情模块 1,542 + 记忆模块 1,187 + 联网搜索模块 28 + QQ 动态模块 454）", source)
             self.assertIn("OneBot v11", source)
             for repo in (
                 "astrbot_plugin_angel_heart",

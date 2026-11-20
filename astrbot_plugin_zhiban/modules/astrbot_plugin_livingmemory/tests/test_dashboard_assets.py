@@ -1,7 +1,9 @@
+import json
 import re
 import shutil
 import subprocess
 from pathlib import Path
+from urllib.parse import parse_qs
 
 import pytest
 
@@ -219,3 +221,218 @@ def test_dashboard_sources_have_no_legacy_appearance_cache_or_controls() -> None
         if marker in path.read_text(encoding="utf-8")
     ]
     assert not offenders, f"遗留外观控制/缓存: {offenders}"
+
+FIXTURE_JS = r"""
+const fs = require('fs');
+const vm = require('vm');
+const path = require('path');
+
+const root = process.argv[2];
+const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const bundle = fs.readFileSync(path.join(root, 'assets', 'base.min.js'), 'utf8');
+const scenario = JSON.parse(process.argv[3]);
+
+const elements = [];
+function textOf(el) { return el._text + el.children.map(textOf).join(''); }
+function makeElement(tag, attrs = {}, text = '') {
+  const el = {
+    tagName: tag.toUpperCase(), attrs: { ...attrs }, children: [], _text: text,
+    get textContent() { return textOf(this); },
+    set textContent(value) { this._text = String(value); this.children = []; },
+    getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null; },
+    setAttribute(name, value) { this.attrs[name] = String(value); },
+    removeAttribute(name) { delete this.attrs[name]; },
+  };
+  elements.push(el);
+  return el;
+}
+const documentEl = makeElement('html', scenario.lang ? { lang: scenario.lang } : {});
+const htmlLang = (html.match(/<html[^>]*\blang="([^"]+)"/) || [])[1];
+if (htmlLang && !scenario.lang) documentEl.attrs.lang = htmlLang;
+const rootEl = makeElement('#root');
+const stack = [rootEl];
+const tagPattern = new RegExp("<([a-zA-Z][a-zA-Z0-9-]*)([^>]*?)(\\/?)>|\\/([a-zA-Z][a-zA-Z0-9-]*)>|([^<]+)", "g");
+for (const match of html.matchAll(tagPattern)) {
+  const [, openTag, attrsText, selfClosing, closeTag, rawText] = match;
+  if (openTag) {
+    const attrs = {};
+    for (const attr of attrsText.matchAll(/([a-zA-Z_:][\w:.-]*)(?:=["']([^"']*)["'])?/g)) {
+      attrs[attr[1]] = attr[2] || '';
+    }
+    const el = makeElement(openTag, attrs);
+    stack.at(-1).children.push(el);
+    if (!selfClosing && !['input','meta','link','br','hr'].includes(openTag.toLowerCase())) stack.push(el);
+  } else if (closeTag) {
+    if (stack.length > 1 && stack.at(-1).tagName === closeTag.toUpperCase()) stack.pop();
+  } else if (rawText.trim() && !['script','style'].includes(stack.at(-1).tagName.toLowerCase())) {
+    stack.at(-1)._text += rawText.trim();
+  }
+}
+function matches(el, selector) {
+  if (!selector.startsWith('[') || !selector.endsWith(']')) return false;
+  const body = selector.slice(1, -1);
+  const eq = body.indexOf('=');
+  const attr = eq === -1 ? body : body.slice(0, eq);
+  if (!Object.prototype.hasOwnProperty.call(el.attrs, attr)) return false;
+  if (eq === -1) return true;
+  const expected = body.slice(eq + 1).replace(/^['"]|['"]$/g, '');
+  return el.attrs[attr] === expected;
+}
+const listeners = {};
+const document = {
+  documentElement: documentEl,
+  readyState: 'loading',
+  querySelectorAll: selector => elements.filter(el => el !== rootEl && matches(el, selector)),
+  addEventListener: (event, cb) => (listeners[event] ||= []).push(cb),
+};
+const storage = { ...scenario.storage };
+class CustomEvent { constructor(type, detail) { this.type = type; this.detail = detail; } }
+class URLSearchParams {
+  constructor(query) {
+    this.params = {};
+    for (const [key, value] of new globalThis.URLSearchParams(query)) this.params[key] = value;
+  }
+  get(key) { return this.params[key] ?? null; }
+}
+const windowObj = {
+  localStorage: { getItem: key => storage[key] ?? null, setItem: (key, value) => { storage[key] = String(value); } },
+  navigator: { language: 'en-US' },
+  location: { search: scenario.query || '' },
+  addEventListener: (event, cb) => (listeners[event] ||= []).push(cb),
+  dispatchEvent: event => (listeners[event.type] || []).forEach(cb => cb(event)),
+};
+if (scenario.locale) {
+  windowObj.AstrBotPluginView = { getContext: () => ({ locale: scenario.locale }) };
+}
+if (scenario.lang) documentEl.attrs.lang = scenario.lang;
+vm.runInNewContext(bundle, {
+  window: windowObj, document, localStorage: windowObj.localStorage,
+  navigator: windowObj.navigator, URLSearchParams, CustomEvent, console,
+});
+const keyText = key => document.querySelectorAll(`[data-i18n="${key}"]`)[0]?.textContent ?? null;
+const placeholder = key => document.querySelectorAll(`[data-i18n-placeholder="${key}"]`)[0]?.attrs.placeholder ?? null;
+if (scenario.fireDomReady) (listeners.DOMContentLoaded || []).forEach(cb => cb());
+if (scenario.setLanguage) windowObj.setLanguage(scenario.setLanguage, { persist: true, source: 'user' });
+process.stdout.write(JSON.stringify({
+  lang: documentEl.attrs.lang || null,
+  active: windowObj.getLanguage(),
+  keys: {
+    graph: keyText('nav.graph'), memory: keyText('nav.memory'), recall: keyText('nav.recall'),
+    system: keyText('nav.system'), prompts: keyText('nav.prompts'), language: keyText('header.lang'),
+    title: keyText('page.title'),
+  },
+  graphPlaceholder: placeholder('graph.queryPh'),
+  storage,
+}));"""
+
+
+def _render_bundle(**scenario) -> dict[str, object]:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node 不在 PATH，跳过 dashboard 首帧 bundle fixture")
+    completed = subprocess.run(
+        [node, "-e", FIXTURE_JS, "fixture", str(DASHBOARD), json.dumps(scenario)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    return json.loads(completed.stdout)
+
+
+def test_dashboard_static_fallback_is_chinese_before_locale_detection() -> None:
+    index = (DASHBOARD / "index.html").read_text(encoding="utf-8")
+
+    assert '<html lang="zh-CN">' in index
+    assert '<title data-i18n="page.title">记忆成长</title>' in index
+    english_fallbacks = (
+        "Knowledge Graph", "Recall Test", "Reset view", "Session ID",
+        "Prompts", "Language", "System Overview", "Unsaved changes",
+    )
+    for fallback in english_fallbacks:
+        assert fallback not in index, fallback
+    assert 'src="./assets/base.min.js"' in index
+    assert 'data-i18n-aria="nav.graph"' in index
+
+    result = _render_bundle()
+    # DOMContentLoaded has not fired: this is exactly the cold-cache first paint.
+    assert result["lang"] == "zh-CN"
+    assert result["keys"]["graph"] == "知识图谱"
+    assert result["keys"]["memory"] == "记忆管理"
+    assert result["keys"]["recall"] == "召回测试"
+    assert result["keys"]["system"] == "系统概览"
+    assert result["keys"]["prompts"] == "提示词管理"
+    assert result["keys"]["language"] == "语言"
+    assert result["keys"]["title"] == "记忆成长"
+    assert result["active"] == "zh"
+
+    assert result["graphPlaceholder"] == "输入人物、主题、事实或整句，查看召回到的图谱子图"
+    assert "MutationObserver" not in (DASHBOARD / "i18n.js").read_text(encoding="utf-8")
+
+
+def test_dashboard_head_bundle_defers_locale_until_dom_ready() -> None:
+    # A host bridge with English locale must not flash English over Chinese.
+    result = _render_bundle(locale="en-US")
+    assert result["keys"]["graph"] == "知识图谱"
+
+    result = _render_bundle(locale="en-US", fireDomReady=True)
+    assert result["lang"] == "en"
+    assert result["keys"]["graph"] == "Knowledge Graph"
+    assert result["active"] == "en"
+
+    # Switch back through the same public API used by the language menu.
+    result = _render_bundle(locale="en-US", fireDomReady=True, setLanguage="zh")
+    assert result["lang"] == "zh-CN"
+    assert result["keys"]["graph"] == "知识图谱"
+    assert result["active"] == "zh"
+    assert result["storage"]["lmem_lang"] == "zh"
+
+
+@pytest.mark.parametrize(
+    ("locale", "expected_lang", "expected_nav"),
+    [
+        ("en-US", "en", "Knowledge Graph"),
+        ("ru-RU", "ru", "Граф знаний"),
+        ("ja-JP", "ja", "ナレッジグラフ"),
+    ],
+)
+def test_dashboard_supported_locales_stay_consistent_after_detection(
+    locale: str, expected_lang: str, expected_nav: str
+) -> None:
+    first = _render_bundle(locale=locale)
+    assert first["keys"]["graph"] == "知识图谱"
+
+    result = _render_bundle(locale=locale, fireDomReady=True)
+    assert result["lang"] == expected_lang
+    assert result["keys"]["graph"] == expected_nav
+    assert result["active"] == expected_lang
+
+
+def test_dashboard_legacy_english_cache_does_not_override_explicit_locale() -> None:
+    # A stale cache from an older build must not force English when the URL
+    # explicitly selects a supported locale.
+    first = _render_bundle(storage={"lmem_lang": "en"}, query="?lang=ja")
+    assert first["keys"]["graph"] == "知识图谱"
+
+    result = _render_bundle(
+        storage={"lmem_lang": "en"}, query="?lang=ja", fireDomReady=True
+    )
+    assert result["lang"] == "ja"
+    assert result["keys"]["graph"] == "ナレッジグラフ"
+
+    # Non-URL cached values remain a valid explicit user choice.
+    result = _render_bundle(storage={"lmem_lang": "ru"}, fireDomReady=True)
+    assert result["lang"] == "ru"
+    assert result["keys"]["graph"] == "Граф знаний"
+
+def test_dashboard_generated_bundle_contains_chinese_first_paint_logic() -> None:
+    bundle = (DASHBOARD / "assets" / "base.min.js").read_text(encoding="utf-8")
+    assert '"page.title":         { zh: "记忆成长", en: "记忆成长", ru: "记忆成长" }' in bundle
+    assert "applyI18n();" in bundle
+    assert 'source: "detect"' in bundle
+    assert 'detected === "ja" ? "ja"' in bundle
+
+    source = (DASHBOARD / "i18n.js").read_text(encoding="utf-8")
+    assert "LivingMemory 控制台" not in source
+    assert "LivingMemory Console" not in source
