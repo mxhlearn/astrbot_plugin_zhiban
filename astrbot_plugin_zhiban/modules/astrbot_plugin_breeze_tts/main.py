@@ -26,6 +26,8 @@ from astrbot.api.web import error_response, json_response, request
 
 PLUGIN_NAME = "astrbot_plugin_breeze_tts"
 DEFAULT_BASE = "https://api.breeze.blue"
+MAX_VOICE_SECONDS = 20.0
+ESTIMATED_CHARS_PER_SECOND = 4.5
 # 这些平台适配器不支持语音消息（QQ 官方机器人支持，会转成 silk 发送）
 NO_RECORD_PLATFORMS = {"dingtalk"}
 
@@ -48,6 +50,17 @@ def _clean_for_speech(text: str) -> str:
     cleaned = re.sub(r"[*_`>#]+", "", text)
     cleaned = re.sub(r"\n{2,}", "\n", cleaned)
     return cleaned.strip()
+
+
+def _estimate_voice_seconds(text: str, speed: object = 1.0) -> float:
+    """Estimate speech duration conservatively from non-whitespace characters."""
+    chars = len(re.sub(r"\s+", "", text or ""))
+    try:
+        rate_multiplier = float(speed or 1.0)
+    except (TypeError, ValueError):
+        rate_multiplier = 1.0
+    rate_multiplier = max(0.5, min(2.0, rate_multiplier))
+    return chars / (ESTIMATED_CHARS_PER_SECOND * rate_multiplier)
 
 
 def _extract_json(raw: str) -> dict:
@@ -631,6 +644,18 @@ class BreezeTTSPlugin(Star):
                 )
                 return
 
+            estimated_seconds = _estimate_voice_seconds(
+                script, self._cfg("speed", 1.0)
+            )
+            if estimated_seconds > MAX_VOICE_SECONDS:
+                logger.info(
+                    "Breeze TTS: 跳过语音（%s 字，预计 %.1f 秒，超过 %.0f 秒上限），保持文字",
+                    len(script),
+                    estimated_seconds,
+                    MAX_VOICE_SECONDS,
+                )
+                return
+
             started = time.time()
             path = await self.synthesize(script, instructions)
             logger.info(
@@ -668,7 +693,7 @@ class BreezeTTSPlugin(Star):
         voice = self._cfg("voice_id", "未配置")
         limit = int(self._cfg("max_chars", 1000) or 1000)
         yield event.plain_result(
-            f"Breeze TTS\n语音概率：{probability}%\n智能判断：{smart}\n音色：{voice}\n单条上限：{limit} 字"
+            f"Breeze TTS\n语音概率：{probability}%\n智能判断：{smart}\n音色：{voice}\n单条上限：{limit} 字\n语音时长上限：按 {ESTIMATED_CHARS_PER_SECOND:g} 字/秒估算，最多 {MAX_VOICE_SECONDS:.0f} 秒"
         )
 
     @breeze.command("on")

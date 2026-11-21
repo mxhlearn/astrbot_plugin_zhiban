@@ -7,6 +7,8 @@ import importlib.util
 import io
 import gzip
 import logging
+import random
+import re
 import sys
 import tempfile
 import time
@@ -35,6 +37,14 @@ def package(name, path):
     module = types.ModuleType(name)
     module.__path__ = [str(path)]
     sys.modules[name] = module
+
+
+def extract_function(path, name, globals_):
+    tree = ast.parse(path.read_text(encoding='utf-8'))
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
+    unit = ast.Module(body=[ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0), fn], type_ignores=[])
+    exec(compile(ast.fix_missing_locations(unit), str(path), 'exec'), globals_)
+    return globals_[name]
 
 
 def extract_class(path, name, globals_, methods=None):
@@ -72,7 +82,29 @@ class MediaRegressionTests(unittest.IsolatedAsyncioTestCase):
         cls.repo_module = load_file('_media_eye.services.history_repository', eye/'services/history_repository.py')
         cls.history = load_file('_media_eye.services.qq_history_service', eye/'services/qq_history_service.py')
         cls.FeedCache = extract_class(MODULES/'astrbot_plugin_qzone_ultra/qzone_bridge/client.py','FeedCache',{'OrderedDict':OrderedDict,'time':time})
-        cls.Breeze = extract_class(MODULES/'astrbot_plugin_breeze_tts/main.py','BreezeTTSPlugin',{'Path':Path,'time':time,'uuid':uuid,'logger':logging.getLogger('test')}, {'synthesize','decorate_reply'})
+        breeze_path = MODULES/'astrbot_plugin_breeze_tts/main.py'
+        breeze_globals = {
+            'Path':Path, 'time':time, 'uuid':uuid, 'logger':logging.getLogger('test'),
+            'random':random, 're':re, 'MAX_VOICE_SECONDS':20.0,
+            'ESTIMATED_CHARS_PER_SECOND':4.5,
+            '_is_recitation':lambda _text: False,
+            '_clean_for_speech':lambda text: text,
+        }
+        estimate_fn = extract_function(
+            breeze_path, '_estimate_voice_seconds', breeze_globals
+        )
+        cls.estimate_voice_seconds = staticmethod(estimate_fn)
+        Plain = type('Plain', (), {'__init__':lambda self, text: setattr(self, 'text', text)})
+        At = type('At', (), {})
+        Record = type('Record', (), {})
+        breeze_globals.update({
+            '_estimate_voice_seconds':estimate_fn,
+            'Comp':types.SimpleNamespace(Plain=Plain, At=At, Record=Record),
+        })
+        cls.Breeze = extract_class(
+            breeze_path, 'BreezeTTSPlugin', breeze_globals, {'synthesize','decorate_reply'}
+        )
+        cls.BreezeComp = types.SimpleNamespace(Plain=Plain, At=At, Record=Record)
 
     @classmethod
     def tearDownClass(cls):
@@ -158,6 +190,29 @@ class MediaRegressionTests(unittest.IsolatedAsyncioTestCase):
         result=types.SimpleNamespace(is_llm_result=lambda:False)
         event=types.SimpleNamespace(get_result=lambda:result)
         await obj.decorate_reply(event)
+
+    def test_tts_duration_estimate_uses_speed_and_twenty_second_cap(self):
+        self.assertAlmostEqual(self.estimate_voice_seconds('字'*90, 1.0), 20.0)
+        self.assertGreater(self.estimate_voice_seconds('字'*91, 1.0), 20.0)
+        self.assertAlmostEqual(self.estimate_voice_seconds('字'*90, 2.0), 10.0)
+        self.assertAlmostEqual(self.estimate_voice_seconds('字 字\n字', 1.0), 3/4.5)
+
+    async def test_tts_probability_over_twenty_seconds_keeps_text(self):
+        obj=self.Breeze()
+        obj._allowed_here=lambda event:True
+        obj._voice_probability=lambda:100
+        obj._cfg=lambda key,default=None: {
+            'voice_probability':100, 'smart_voice':False, 'max_chars':1000,
+            'speed':1.0, 'keep_text':False,
+        }.get(key,default)
+        obj.synthesize=AsyncMock()
+        chain=[self.BreezeComp.Plain('字'*91)]
+        result=types.SimpleNamespace(is_llm_result=lambda:True,chain=chain)
+        event=types.SimpleNamespace(get_result=lambda:result,message_str='')
+        await obj.decorate_reply(event)
+        obj.synthesize.assert_not_awaited()
+        self.assertIs(result.chain,chain)
+        self.assertIsInstance(chain[0],self.BreezeComp.Plain)
 
     async def test_qzone_cache_lru_and_expiry(self):
         now=[1.0]; cache=self.FeedCache(max_items=2,ttl=10,clock=lambda:now[0])
