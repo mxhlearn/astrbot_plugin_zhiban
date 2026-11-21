@@ -367,7 +367,11 @@ class QzoneDaemonController:
     def _health_payload_is_qzone_daemon(cls, payload: dict[str, Any]) -> bool:
         data = cls._health_data(payload)
         identity_keys = ("daemon_state", "daemon_port", "daemon_version")
-        return all(key in data for key in identity_keys)
+        if not all(key in data for key in identity_keys):
+            return False
+        if str(data.get("daemon_state") or "") == "online":
+            return True
+        return str(data.get("bridge_api_version") or "") != ""
 
     @classmethod
     def _bridge_api_version_from_health(cls, payload: dict[str, Any]) -> int:
