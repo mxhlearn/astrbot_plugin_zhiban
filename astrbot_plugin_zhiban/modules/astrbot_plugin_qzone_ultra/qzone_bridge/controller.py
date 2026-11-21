@@ -822,7 +822,11 @@ class QzoneDaemonController:
         health_data: dict[str, Any] = {}
         if probe_daemon and runtime.daemon_port and await self._probe_health(runtime.daemon_port):
             health_data = self._cached_health_data(runtime.daemon_port, runtime.secret)
-            daemon_state = str(health_data.get("daemon_state") or ("needs_rebind" if needs_rebind else "ready"))
+            public_daemon_state = str(health_data.get("daemon_state") or "")
+            if public_daemon_state == "online":
+                daemon_state = "needs_rebind" if needs_rebind else "ready"
+            else:
+                daemon_state = public_daemon_state or ("needs_rebind" if needs_rebind else "ready")
         elif state.session.cookies:
             daemon_state = "needs_rebind" if needs_rebind else "degraded"
         return self._merge_health_status(self._status_from_state(state, daemon_state=daemon_state), health_data)
