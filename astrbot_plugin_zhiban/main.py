@@ -469,6 +469,12 @@ class ZhibanPlugin(Star):
                     "detail": "没有可用空间 Cookie，动态功能尚未就绪",
                 })
             daemon_state = str(status.get("daemon_state") or "")
+            if daemon_state == "degraded" and status.get("cookie_count") and not status.get("needs_rebind"):
+                return remember({
+                    "state": "ready",
+                    "label": "业务可用",
+                    "detail": "模块已运行并完成启动检查",
+                })
             if daemon_state and daemon_state not in {"ready", "running", "online"}:
                 result = {
                     "state": "not_ready",
