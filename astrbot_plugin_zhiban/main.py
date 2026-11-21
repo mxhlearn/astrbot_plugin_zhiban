@@ -469,7 +469,7 @@ class ZhibanPlugin(Star):
                     "detail": "没有可用空间 Cookie，动态功能尚未就绪",
                 })
             daemon_state = str(status.get("daemon_state") or "")
-            if daemon_state and daemon_state not in {"ready", "running"}:
+            if daemon_state and daemon_state not in {"ready", "running", "online"}:
                 result = {
                     "state": "not_ready",
                     "label": "待连接",
